@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Floatr",
+  "version": "0.1.0",
+  "description": "Scans CSFloat listings and notifies you about underpriced skins, valuable stickers relative to price, and rare/low floats.",
+  "permissions": ["storage", "notifications", "alarms"],
+  "host_permissions": ["https://csfloat.com/*"],
+  "background": {
+    "service_worker": "src/background/background.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_page": "options.html"
+}
