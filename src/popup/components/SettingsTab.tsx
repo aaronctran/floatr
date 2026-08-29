@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ExternalLink, Save, TestTube, Trash2, Play, Pause, Info } from 'lucide-react';
+import { ExternalLink, Save, TestTube, ShoppingCart, Play, Pause, Database } from 'lucide-react';
 import type { Settings, SensitivityLevel } from '../../types';
-import { getSettings, setSettings } from '../../services/storage';
+import { getSettings, setSettings, saveTestDeals } from '../../services/storage';
+import { fetchBuyNowListings } from '../../services/csfloatApi';
+import { listingToDeal, MOCK_BUY_NOW_LISTINGS } from '../../services/testData';
 
 const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: number; desc: string }> = {
   strict: { label: 'Strict', stickerRatio: 0.70, desc: 'Fewer deals, higher quality — stickers worth ≥70% of price' },
@@ -73,6 +75,68 @@ export default function SettingsTab() {
         setTestResult(`Loaded ${(data.listings || []).length} listings (best_deal)`);
       }
     } catch (err: any) {
+      setTestResult(`Error: ${err.message}`);
+    }
+    setTesting(false);
+  };
+
+  const handleTestBuyNow = async () => {
+    console.log('[Floatr] handleTestBuyNow clicked');
+    if (!settings) {
+      console.log('[Floatr] settings is null, aborting');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      let listings: any[] = [];
+      let source = 'api';
+
+      try {
+        console.log('[Floatr] Calling fetchBuyNowListings...');
+        const data = await fetchBuyNowListings({ limit: 5 }, settings.apiKey || undefined);
+        console.log('[Floatr] API response:', data);
+        listings = (data?.listings || []).slice(0, 5);
+        console.log('[Floatr] Got', listings.length, 'listings from API');
+      } catch (apiErr: any) {
+        console.log('[Floatr] API call failed:', apiErr.message);
+        listings = MOCK_BUY_NOW_LISTINGS.slice(0, 5);
+        source = 'mock';
+        console.log('[Floatr] Fallback to mock data:', listings.length, 'listings');
+      }
+
+      if (listings.length === 0) {
+        setTestResult('No buy_now listings found.');
+        setTesting(false);
+        return;
+      }
+
+      console.log('[Floatr] Converting listings to deals...');
+      const deals = listings.map(listingToDeal);
+      console.log('[Floatr] Saving', deals.length, 'deals...');
+      await saveTestDeals(deals);
+      console.log('[Floatr] Deals saved successfully');
+
+      const sourceLabel = source === 'mock' ? ' (mock data)' : '';
+      setTestResult(`Created ${deals.length} deal card${deals.length !== 1 ? 's' : ''}${sourceLabel}. Switch to Deals tab to view.`);
+    } catch (err: any) {
+      console.error('[Floatr] Unexpected error in handleTestBuyNow:', err);
+      setTestResult(`Error: ${err.message}`);
+    }
+    setTesting(false);
+  };
+
+  const handleLoadMockOnly = async () => {
+    console.log('[Floatr] handleLoadMockOnly clicked');
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const listings = MOCK_BUY_NOW_LISTINGS.slice(0, 5);
+      const deals = listings.map(listingToDeal);
+      await saveTestDeals(deals);
+      setTestResult(`Loaded ${deals.length} mock deal cards. Switch to Deals tab to view.`);
+    } catch (err: any) {
+      console.error('[Floatr] Mock load error:', err);
       setTestResult(`Error: ${err.message}`);
     }
     setTesting(false);
@@ -227,9 +291,27 @@ export default function SettingsTab() {
         </button>
 
         <button
-          onClick={handleTestApi}
+          onClick={handleTestBuyNow}
           disabled={testing}
           className="w-full py-2 border border-accent-blue/30 text-accent-blue rounded-md text-xs font-semibold hover:bg-accent-blue hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          {testing ? 'Testing…' : 'Test Buy Now (First 5)'}
+        </button>
+
+        <button
+          onClick={handleLoadMockOnly}
+          disabled={testing}
+          className="w-full py-2 border border-white/[0.06] text-text-muted rounded-md text-xs font-semibold hover:text-text-secondary hover:border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <Database className="w-3.5 h-3.5" />
+          {testing ? 'Loading…' : 'Load Mock Data Only'}
+        </button>
+
+        <button
+          onClick={handleTestApi}
+          disabled={testing}
+          className="w-full py-2 border border-white/[0.06] text-text-muted rounded-md text-xs font-semibold hover:text-text-secondary hover:border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
           <TestTube className="w-3.5 h-3.5" />
           {testing ? 'Testing…' : 'Test API (Best Deals)'}

@@ -19,6 +19,15 @@ export default function DealsTab() {
 
   useEffect(() => {
     loadDeals();
+
+    // Auto-refresh when deals are updated from other tabs / test buttons
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (changes.dealLog) {
+        loadDeals();
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
   }, [loadDeals]);
 
   const handlePollNow = async () => {
