@@ -85,7 +85,7 @@ export default function SettingsTab() {
         console.log('[Floatr] Calling fetchBuyNowListings...');
         const data = await fetchBuyNowListings({ limit: 5 }, settings.apiKey || undefined);
         console.log('[Floatr] API response:', data);
-        listings = (data?.listings || []).slice(0, 5);
+        listings = (data?.data || []).slice(0, 5);
         console.log('[Floatr] Got', listings.length, 'listings from API');
       } catch (apiErr: any) {
         console.log('[Floatr] API call failed:', apiErr.message);
