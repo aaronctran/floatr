@@ -54,6 +54,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
     return true;
   }
+  if (message.action === 'preview-listings') {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        const apiKey = settings.apiKey || undefined;
+        const data = await fetchRecentListings({ limit: message.limit || 5 }, apiKey);
+        sendResponse({ ok: true, listings: data?.data || [] });
+      } catch (err: any) {
+        sendResponse({ ok: false, error: err.message });
+      }
+    })();
+    return true;
+  }
 });
 
 chrome.notifications.onClicked.addListener((notificationId) => {
@@ -121,8 +134,8 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
     for (const name of watchlist.slice(0, 5)) {
       try {
         const data = await fetchWatchedItemListings(name, { limit: Math.min(limit, 20) }, apiKey);
-        console.log(`[Floatr] API Response — "${name}": ${data?.listings?.length ?? 0} listings`);
-        if (data?.listings) all.push(...data.listings);
+        console.log(`[Floatr] API Response — "${name}": ${data?.data?.length ?? 0} listings`);
+        if (data?.data) all.push(...data.data);
       } catch (e: any) {
         console.warn(`[Floatr] API Error — watchlist item "${name}":`, e.message);
       }
@@ -132,8 +145,8 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
 
   console.log(`[Floatr] API Call — firehose mode, limit: ${limit}`);
   const data = await fetchRecentListings({ limit }, apiKey);
-  console.log(`[Floatr] API Response — firehose: ${data?.listings?.length ?? 0} listings`);
-  return data?.listings || [];
+  console.log(`[Floatr] API Response — firehose: ${data?.data?.length ?? 0} listings`);
+  return data?.data || [];
 }
 
 async function processListings(listings: any[], settings: Awaited<ReturnType<typeof getSettings>>) {
@@ -177,7 +190,7 @@ async function processListings(listings: any[], settings: Awaited<ReturnType<typ
         stickers:
           item?.stickers?.map((s: any) => ({
             name: s?.name,
-            price: s?.scm?.price ?? null,
+            price: s?.reference?.price ?? null,
           })) || [],
         stickerValueCents: result.stickerValueCents,
         reasons: result.reasons as Deal['reasons'],

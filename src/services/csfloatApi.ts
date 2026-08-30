@@ -28,7 +28,7 @@ export async function fetchListings(params: FetchListingsParams, apiKey?: string
     if (!res.ok) {
       throw new Error(`CSFloat API error ${res.status}: ${await res.text()}`);
     }
-    return res.json() as Promise<{ listings: any[] }>;
+    return res.json() as Promise<{ data: any[] }>;
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
@@ -45,6 +45,7 @@ export async function fetchRecentListings(
   return fetchListings(
     {
       sort_by: 'most_recent',
+      type: 'buy_now',
       limit,
       min_price: minPrice,
       max_price: maxPrice,
@@ -78,6 +79,7 @@ export async function fetchWatchedItemListings(
     {
       market_hash_name: marketHashName,
       sort_by: 'lowest_price',
+      type: 'buy_now',
       limit,
     },
     apiKey

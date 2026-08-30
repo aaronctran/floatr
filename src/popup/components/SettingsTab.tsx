@@ -58,22 +58,11 @@ export default function SettingsTab() {
     setTesting(true);
     setTestResult(null);
     try {
-      const url = new URL('https://csfloat.com/api/v1/listings');
-      url.searchParams.set('sort_by', 'best_deal');
-      url.searchParams.set('limit', '30');
-      const headers: Record<string, string> = {};
-      if (settings.apiKey) headers['Authorization'] = settings.apiKey;
-      const res = await fetch(url.toString(), { headers });
-      if (!res.ok) {
-        url.searchParams.set('sort_by', 'most_recent');
-        const fallbackRes = await fetch(url.toString(), { headers });
-        if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
-        const data = await fallbackRes.json();
-        setTestResult(`Loaded ${(data.listings || []).length} listings (most_recent)`);
-      } else {
-        const data = await res.json();
-        setTestResult(`Loaded ${(data.listings || []).length} listings (best_deal)`);
+      const response = await chrome.runtime.sendMessage({ action: 'preview-listings', limit: 30 });
+      if (!response.ok) {
+        throw new Error(response.error || 'API call failed');
       }
+      setTestResult(`Loaded ${(response.listings || []).length} listings (buy_now)`);
     } catch (err: any) {
       setTestResult(`Error: ${err.message}`);
     }
