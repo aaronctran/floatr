@@ -54,22 +54,6 @@ export async function fetchRecentListings(
   );
 }
 
-export async function fetchBuyNowListings(
-  { limit, minPrice, maxPrice }: { limit?: number; minPrice?: number; maxPrice?: number },
-  apiKey?: string
-) {
-  return fetchListings(
-    {
-      type: 'buy_now',
-      sort_by: 'most_recent',
-      limit,
-      min_price: minPrice,
-      max_price: maxPrice,
-    },
-    apiKey
-  );
-}
-
 export async function fetchWatchedItemListings(
   marketHashName: string,
   { limit }: { limit?: number },

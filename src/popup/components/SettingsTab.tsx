@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ExternalLink, Save, TestTube, ShoppingCart, Play, Pause, Database } from 'lucide-react';
+import { ExternalLink, Save, TestTube, Play, Pause, Database } from 'lucide-react';
 import type { Settings, SensitivityLevel } from '../../types';
 import { getSettings, setSettings, saveTestDeals } from '../../services/storage';
-import { fetchBuyNowListings } from '../../services/csfloatApi';
 import { listingToDeal, MOCK_BUY_NOW_LISTINGS } from '../../services/testData';
 
 const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: number; desc: string }> = {
@@ -53,24 +52,11 @@ export default function SettingsTab() {
     }
   };
 
+  // Consolidated test: goes through the background worker (canonical API
+  // path), takes the first 5 buy_now listings, saves them as deal cards,
+  // and falls back to mock data if the live call fails.
   const handleTestApi = async () => {
-    if (!settings) return;
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const response = await chrome.runtime.sendMessage({ action: 'preview-listings', limit: 30 });
-      if (!response.ok) {
-        throw new Error(response.error || 'API call failed');
-      }
-      setTestResult(`Loaded ${(response.listings || []).length} listings (buy_now)`);
-    } catch (err: any) {
-      setTestResult(`Error: ${err.message}`);
-    }
-    setTesting(false);
-  };
-
-  const handleTestBuyNow = async () => {
-    console.log('[Floatr] handleTestBuyNow clicked');
+    console.log('[Floatr] handleTestApi clicked');
     if (!settings) {
       console.log('[Floatr] settings is null, aborting');
       return;
@@ -82,10 +68,12 @@ export default function SettingsTab() {
       let source = 'api';
 
       try {
-        console.log('[Floatr] Calling fetchBuyNowListings...');
-        const data = await fetchBuyNowListings({ limit: 5 }, settings.apiKey || undefined);
-        console.log('[Floatr] API response:', data);
-        listings = (data?.data || []).slice(0, 5);
+        console.log('[Floatr] Requesting preview-listings from background...');
+        const response = await chrome.runtime.sendMessage({ action: 'preview-listings', limit: 5 });
+        if (!response.ok) {
+          throw new Error(response.error || 'API call failed');
+        }
+        listings = (response.listings || []).slice(0, 5);
         console.log('[Floatr] Got', listings.length, 'listings from API');
       } catch (apiErr: any) {
         console.log('[Floatr] API call failed:', apiErr.message);
@@ -95,7 +83,7 @@ export default function SettingsTab() {
       }
 
       if (listings.length === 0) {
-        setTestResult('No buy_now listings found.');
+        setTestResult('No buy_now listings returned from CSFloat API.');
         setTesting(false);
         return;
       }
@@ -106,10 +94,10 @@ export default function SettingsTab() {
       await saveTestDeals(deals);
       console.log('[Floatr] Deals saved successfully');
 
-      const sourceLabel = source === 'mock' ? ' (mock data)' : '';
-      setTestResult(`Created ${deals.length} deal card${deals.length !== 1 ? 's' : ''}${sourceLabel}. Switch to Deals tab to view.`);
+      const sourceLabel = source === 'mock' ? ' (mock fallback)' : '';
+      setTestResult(`Loaded ${deals.length} buy_now listing${deals.length !== 1 ? 's' : ''}${sourceLabel}. Switch to Deals tab to view.`);
     } catch (err: any) {
-      console.error('[Floatr] Unexpected error in handleTestBuyNow:', err);
+      console.error('[Floatr] Unexpected error in handleTestApi:', err);
       setTestResult(`Error: ${err.message}`);
     }
     setTesting(false);
@@ -280,12 +268,12 @@ export default function SettingsTab() {
         </button>
 
         <button
-          onClick={handleTestBuyNow}
+          onClick={handleTestApi}
           disabled={testing}
           className="w-full py-2 border border-accent-blue/30 text-accent-blue rounded-md text-xs font-semibold hover:bg-accent-blue hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          <ShoppingCart className="w-3.5 h-3.5" />
-          {testing ? 'Testing…' : 'Test Buy Now (First 5)'}
+          <TestTube className="w-3.5 h-3.5" />
+          {testing ? 'Testing…' : 'Test API (Buy Now, First 5)'}
         </button>
 
         <button
@@ -295,15 +283,6 @@ export default function SettingsTab() {
         >
           <Database className="w-3.5 h-3.5" />
           {testing ? 'Loading…' : 'Load Mock Data Only'}
-        </button>
-
-        <button
-          onClick={handleTestApi}
-          disabled={testing}
-          className="w-full py-2 border border-white/[0.06] text-text-muted rounded-md text-xs font-semibold hover:text-text-secondary hover:border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <TestTube className="w-3.5 h-3.5" />
-          {testing ? 'Testing…' : 'Test API (Best Deals)'}
         </button>
 
         {testResult && (
