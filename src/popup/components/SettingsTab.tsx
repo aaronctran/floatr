@@ -12,13 +12,27 @@ const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: n
 
 export default function SettingsTab() {
   const [settings, setLocalSettings] = useState<Settings | null>(null);
+  const [watchlistDraft, setWatchlistDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
-    getSettings().then(setLocalSettings);
+    getSettings().then((s) => {
+      setLocalSettings(s);
+      setWatchlistDraft(Array.isArray(s.watchlist) ? s.watchlist.join('\n') : '');
+    });
   }, []);
+
+  const parseWatchlist = (text: string) =>
+    text.split('\n').map((s) => s.trim()).filter(Boolean);
+
+  // Commit the draft (trimmed, de-empty-lined) into settings state.
+  // Called on blur and on Save — never on every keystroke.
+  const commitWatchlist = () => {
+    if (watchlistDraft === null) return;
+    updateField('watchlist', parseWatchlist(watchlistDraft));
+  };
 
   const updateField = useCallback((field: keyof Settings, value: any) => {
     setLocalSettings((prev) => (prev ? { ...prev, [field]: value } : null));
@@ -30,6 +44,7 @@ export default function SettingsTab() {
     const sens = SENSITIVITY_MAP[settings.sensitivity || 'balanced'];
     const newSettings: Partial<Settings> = {
       ...settings,
+      watchlist: parseWatchlist(watchlistDraft ?? ''),
       stickerRatioThreshold: sens.stickerRatio,
       pollIntervalMinutes: Math.max(1, Math.min(60, settings.pollIntervalMinutes)),
       maxListingsPerPoll: Math.max(1, Math.min(50, settings.maxListingsPerPoll)),
@@ -172,17 +187,15 @@ export default function SettingsTab() {
       <Section title="Watchlist">
         <label className="block text-xs font-semibold text-text-secondary mb-1">Items to watch (one per line)</label>
         <textarea
-          value={Array.isArray(settings.watchlist) ? settings.watchlist.join('\n') : ''}
-          onChange={(e) =>
-            updateField(
-              'watchlist',
-              e.target.value.split('\n').map((s) => s.trim()).filter(Boolean)
-            )
-          }
-          placeholder="AK-47 | Redline (Field-Tested)"
+          value={watchlistDraft ?? ''}
+          onChange={(e) => setWatchlistDraft(e.target.value)}
+          onBlur={commitWatchlist}
+          placeholder={'M4A4 | Poseidon (Factory New)\nAK-47 | Redline (Field-Tested)'}
           className="w-full min-h-[60px] px-2.5 py-2 bg-bg-card border border-white/[0.06] rounded-md text-text-primary text-xs placeholder:text-text-muted focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all resize-y"
         />
-        <p className="text-[10px] text-text-muted mt-1">Empty = scan all recent listings (firehose mode)</p>
+        <p className="text-[10px] text-text-muted mt-1">
+          Use the exact market name — <span className="text-text-secondary">Weapon | Skin (Wear)</span> — one per line, copied from a CSFloat listing title. Empty = scan all recent listings (firehose mode).
+        </p>
       </Section>
 
       {/* API Key */}
