@@ -2,6 +2,7 @@
 
 import type { Deal } from '../types';
 import { fetchRecentListings, fetchWatchedItemListings } from '../services/csfloatApi';
+import { normalizeWatchItem } from '../services/watchlist';
 import { evaluateListing } from '../services/scoring';
 import {
   getSettings,
@@ -132,9 +133,10 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
     );
     const all: any[] = [];
     for (const name of watchlist.slice(0, 5)) {
+      const { normalized } = normalizeWatchItem(name);
       try {
-        const data = await fetchWatchedItemListings(name, { limit: Math.min(limit, 20) }, apiKey);
-        console.log(`[Floatr] API Response — "${name}": ${data?.data?.length ?? 0} listings`);
+        const data = await fetchWatchedItemListings(normalized, { limit: Math.min(limit, 20) }, apiKey);
+        console.log(`[Floatr] API Response — "${name}" → "${normalized}": ${data?.data?.length ?? 0} listings`);
         if (data?.data) all.push(...data.data);
       } catch (e: any) {
         console.warn(`[Floatr] API Error — watchlist item "${name}":`, e.message);

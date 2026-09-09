@@ -3,6 +3,7 @@ import { ExternalLink, Save, TestTube, Play, Pause, Database } from 'lucide-reac
 import type { Settings, SensitivityLevel } from '../../types';
 import { getSettings, setSettings, saveTestDeals } from '../../services/storage';
 import { listingToDeal, MOCK_BUY_NOW_LISTINGS } from '../../services/testData';
+import { normalizeWatchlist } from '../../services/watchlist';
 
 const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: number; desc: string }> = {
   strict: { label: 'Strict', stickerRatio: 0.70, desc: 'Fewer deals, higher quality — stickers worth ≥70% of price' },
@@ -24,11 +25,21 @@ export default function SettingsTab() {
     });
   }, []);
 
+  // Parse raw textarea text into normalized market_hash_name entries.
+  // Fuzzy: "ak redline ft" → "AK-47 | Redline (Field-Tested)".
+  // Unrecognized lines pass through unchanged.
   const parseWatchlist = (text: string) =>
-    text.split('\n').map((s) => s.trim()).filter(Boolean);
+    normalizeWatchlist(text.split('\n').map((s) => s.trim()).filter(Boolean)).map((r) => r.normalized);
 
-  // Commit the draft (trimmed, de-empty-lined) into settings state.
-  // Called on blur and on Save — never on every keystroke.
+  // Lines the fuzzy matcher rewrote, for the "Auto-corrected" preview.
+  const watchCorrections =
+    watchlistDraft === null
+      ? []
+      : normalizeWatchlist(watchlistDraft.split('\n').map((s) => s.trim()).filter(Boolean))
+          .filter((r) => r.original !== r.normalized);
+
+  // Commit the draft into settings state. Called on blur and on Save —
+  // never on every keystroke (trim-on-change ate spaces mid-typing).
   const commitWatchlist = () => {
     if (watchlistDraft === null) return;
     updateField('watchlist', parseWatchlist(watchlistDraft));
@@ -194,8 +205,13 @@ export default function SettingsTab() {
           className="w-full min-h-[60px] px-2.5 py-2 bg-bg-card border border-white/[0.06] rounded-md text-text-primary text-xs placeholder:text-text-muted focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all resize-y"
         />
         <p className="text-[10px] text-text-muted mt-1">
-          Use the exact market name — <span className="text-text-secondary">Weapon | Skin (Wear)</span> — one per line, copied from a CSFloat listing title. Empty = scan all recent listings (firehose mode).
+          Full name (<span className="text-text-secondary">Weapon | Skin (Wear)</span>) or shorthand (<span className="text-text-secondary">ak redline ft</span>) — one per line. Empty = scan all recent listings (firehose mode).
         </p>
+        {watchCorrections.length > 0 && (
+          <p className="text-[10px] text-accent-green mt-1">
+            Auto-corrected: {watchCorrections.map((r) => r.normalized).join(' · ')}
+          </p>
+        )}
       </Section>
 
       {/* API Key */}
