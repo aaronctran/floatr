@@ -20,10 +20,10 @@ export function computeFloatRarity(floatValue: number): number {
   return 1 - percentileFromLow;
 }
 
-export function computeStickerValueCents(item: { stickers?: Array<{ scm?: { price?: number } }> }): number {
+export function computeStickerValueCents(item: { stickers?: Array<{ reference?: { price?: number } }> }): number {
   if (!Array.isArray(item.stickers) || item.stickers.length === 0) return 0;
   return item.stickers.reduce((sum, sticker) => {
-    const price = sticker?.scm?.price;
+    const price = sticker?.reference?.price;
     return sum + (typeof price === 'number' ? price : 0);
   }, 0);
 }

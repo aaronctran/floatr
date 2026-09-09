@@ -15,15 +15,27 @@ export async function fetchListings(params: FetchListingsParams, apiKey?: string
   const headers: Record<string, string> = {};
   if (apiKey) headers['Authorization'] = apiKey;
 
-  const res = await fetch(url.toString(), { headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  if (res.status === 429) {
-    throw new Error('CSFloat rate limit hit (429) — try increasing the poll interval.');
+  try {
+    const res = await fetch(url.toString(), { headers, signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.status === 429) {
+      throw new Error('CSFloat rate limit hit (429) — try increasing the poll interval.');
+    }
+    if (!res.ok) {
+      throw new Error(`CSFloat API error ${res.status}: ${await res.text()}`);
+    }
+    return res.json() as Promise<{ data: any[] }>;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('CSFloat API request timed out after 15s.');
+    }
+    throw err;
   }
-  if (!res.ok) {
-    throw new Error(`CSFloat API error ${res.status}: ${await res.text()}`);
-  }
-  return res.json() as Promise<{ listings: any[] }>;
 }
 
 export async function fetchRecentListings(
@@ -33,6 +45,7 @@ export async function fetchRecentListings(
   return fetchListings(
     {
       sort_by: 'most_recent',
+      type: 'buy_now',
       limit,
       min_price: minPrice,
       max_price: maxPrice,
@@ -50,6 +63,7 @@ export async function fetchWatchedItemListings(
     {
       market_hash_name: marketHashName,
       sort_by: 'lowest_price',
+      type: 'buy_now',
       limit,
     },
     apiKey

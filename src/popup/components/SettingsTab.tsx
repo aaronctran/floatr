@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ExternalLink, Save, TestTube, Trash2, Play, Pause, Info } from 'lucide-react';
+import { ExternalLink, Save, TestTube, Play, Pause, Database } from 'lucide-react';
 import type { Settings, SensitivityLevel } from '../../types';
-import { getSettings, setSettings } from '../../services/storage';
+import { getSettings, setSettings, saveTestDeals } from '../../services/storage';
+import { listingToDeal, MOCK_BUY_NOW_LISTINGS } from '../../services/testData';
 
 const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: number; desc: string }> = {
   strict: { label: 'Strict', stickerRatio: 0.70, desc: 'Fewer deals, higher quality — stickers worth ≥70% of price' },
@@ -51,28 +52,68 @@ export default function SettingsTab() {
     }
   };
 
+  // Consolidated test: goes through the background worker (canonical API
+  // path), takes the first 5 buy_now listings, saves them as deal cards,
+  // and falls back to mock data if the live call fails.
   const handleTestApi = async () => {
-    if (!settings) return;
+    console.log('[Floatr] handleTestApi clicked');
+    if (!settings) {
+      console.log('[Floatr] settings is null, aborting');
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
-      const url = new URL('https://csfloat.com/api/v1/listings');
-      url.searchParams.set('sort_by', 'best_deal');
-      url.searchParams.set('limit', '30');
-      const headers: Record<string, string> = {};
-      if (settings.apiKey) headers['Authorization'] = settings.apiKey;
-      const res = await fetch(url.toString(), { headers });
-      if (!res.ok) {
-        url.searchParams.set('sort_by', 'most_recent');
-        const fallbackRes = await fetch(url.toString(), { headers });
-        if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
-        const data = await fallbackRes.json();
-        setTestResult(`Loaded ${(data.listings || []).length} listings (most_recent)`);
-      } else {
-        const data = await res.json();
-        setTestResult(`Loaded ${(data.listings || []).length} listings (best_deal)`);
+      let listings: any[] = [];
+      let source = 'api';
+
+      try {
+        console.log('[Floatr] Requesting preview-listings from background...');
+        const response = await chrome.runtime.sendMessage({ action: 'preview-listings', limit: 5 });
+        if (!response.ok) {
+          throw new Error(response.error || 'API call failed');
+        }
+        listings = (response.listings || []).slice(0, 5);
+        console.log('[Floatr] Got', listings.length, 'listings from API');
+      } catch (apiErr: any) {
+        console.log('[Floatr] API call failed:', apiErr.message);
+        listings = MOCK_BUY_NOW_LISTINGS.slice(0, 5);
+        source = 'mock';
+        console.log('[Floatr] Fallback to mock data:', listings.length, 'listings');
       }
+
+      if (listings.length === 0) {
+        setTestResult('No buy_now listings returned from CSFloat API.');
+        setTesting(false);
+        return;
+      }
+
+      console.log('[Floatr] Converting listings to deals...');
+      const deals = listings.map(listingToDeal);
+      console.log('[Floatr] Saving', deals.length, 'deals...');
+      await saveTestDeals(deals);
+      console.log('[Floatr] Deals saved successfully');
+
+      const sourceLabel = source === 'mock' ? ' (mock fallback)' : '';
+      setTestResult(`Loaded ${deals.length} buy_now listing${deals.length !== 1 ? 's' : ''}${sourceLabel}. Switch to Deals tab to view.`);
     } catch (err: any) {
+      console.error('[Floatr] Unexpected error in handleTestApi:', err);
+      setTestResult(`Error: ${err.message}`);
+    }
+    setTesting(false);
+  };
+
+  const handleLoadMockOnly = async () => {
+    console.log('[Floatr] handleLoadMockOnly clicked');
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const listings = MOCK_BUY_NOW_LISTINGS.slice(0, 5);
+      const deals = listings.map(listingToDeal);
+      await saveTestDeals(deals);
+      setTestResult(`Loaded ${deals.length} mock deal cards. Switch to Deals tab to view.`);
+    } catch (err: any) {
+      console.error('[Floatr] Mock load error:', err);
       setTestResult(`Error: ${err.message}`);
     }
     setTesting(false);
@@ -232,7 +273,16 @@ export default function SettingsTab() {
           className="w-full py-2 border border-accent-blue/30 text-accent-blue rounded-md text-xs font-semibold hover:bg-accent-blue hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
           <TestTube className="w-3.5 h-3.5" />
-          {testing ? 'Testing…' : 'Test API (Best Deals)'}
+          {testing ? 'Testing…' : 'Test API (Buy Now, First 5)'}
+        </button>
+
+        <button
+          onClick={handleLoadMockOnly}
+          disabled={testing}
+          className="w-full py-2 border border-white/[0.06] text-text-muted rounded-md text-xs font-semibold hover:text-text-secondary hover:border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <Database className="w-3.5 h-3.5" />
+          {testing ? 'Loading…' : 'Load Mock Data Only'}
         </button>
 
         {testResult && (

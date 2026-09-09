@@ -59,6 +59,13 @@ export async function getDealLog(): Promise<import('../types').Deal[]> {
   return deals as import('../types').Deal[];
 }
 
+export async function saveTestDeals(deals: import('../types').Deal[]): Promise<void> {
+  const { [DEALS_KEY]: existing = [] } = await chrome.storage.local.get(DEALS_KEY);
+  const arr = [...deals, ...(existing as import('../types').Deal[])];
+  const trimmed = arr.slice(0, MAX_DEALS);
+  await chrome.storage.local.set({ [DEALS_KEY]: trimmed });
+}
+
 export async function clearDealLog(): Promise<void> {
   await chrome.storage.local.set({ [DEALS_KEY]: [] });
 }

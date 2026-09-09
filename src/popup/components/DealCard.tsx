@@ -80,7 +80,7 @@ export default function DealCard({ deal }: Props) {
               {deal.priceDisplay || '$0.00'}
             </span>
           </div>
-          <div className="flex gap-1 mt-1 flex-wrap">
+          <div className="flex gap-1 mt-1 flex-wrap items-center">
             {deal.reasons.map((r, i) => (
               <span
                 key={i}
@@ -95,6 +95,11 @@ export default function DealCard({ deal }: Props) {
                 {r.type === 'sticker_arbitrage' ? 'sticker arb' : r.type === 'rare_float' ? 'float match' : 'API test'}
               </span>
             ))}
+            {deal.stickerValueCents > 0 && (
+              <span className="text-[10px] text-amber-400 font-bold">
+                ${(deal.stickerValueCents / 100).toFixed(2)} stickers
+              </span>
+            )}
           </div>
         </div>
 
