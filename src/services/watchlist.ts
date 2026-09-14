@@ -10,6 +10,8 @@ export interface WatchItemResult {
   original: string;
   normalized: string;
   recognized: boolean;
+  /** Canonical wear when one was specified, else null (matches all wears). */
+  wear: string | null;
 }
 
 const norm = (s: string) =>
@@ -195,7 +197,7 @@ function titleCase(s: string): string {
 
 export function normalizeWatchItem(input: string): WatchItemResult {
   const original = input.trim();
-  if (!original) return { original, normalized: original, recognized: false };
+  if (!original) return { original, normalized: original, recognized: false, wear: null };
 
   let text = original.replace(/★/g, ' ').trim();
 
@@ -222,13 +224,13 @@ export function normalizeWatchItem(input: string): WatchItemResult {
   const match = matchWeapon(weaponPart);
   if (!match) {
     // Unknown weapon — pass through unchanged rather than guessing.
-    return { original, normalized: original, recognized: false };
+    return { original, normalized: original, recognized: false, wear: null };
   }
 
   const skin = skinPart || match.rest;
   if (!skin) {
     // Weapon recognized but no skin given — not a valid market_hash_name.
-    return { original, normalized: original, recognized: false };
+    return { original, normalized: original, recognized: false, wear: null };
   }
 
   const star = KNIFE_NAMES.has(match.weapon) ? '★ ' : '';
@@ -238,9 +240,31 @@ export function normalizeWatchItem(input: string): WatchItemResult {
     original,
     normalized: `${star}${st}${match.weapon} | ${titleCase(norm(skin))}${wearSuffix}`,
     recognized: true,
+    wear,
   };
 }
 
 export function normalizeWatchlist(items: string[]): WatchItemResult[] {
   return items.map(normalizeWatchItem);
+}
+
+// All wear tiers, best to worst — used to expand wear-less watchlist entries.
+export const WEAR_TIERS = [
+  'Factory New',
+  'Minimal Wear',
+  'Field-Tested',
+  'Well-Worn',
+  'Battle-Scarred',
+] as const;
+
+// Expand a watchlist entry into the market_hash_name queries to run:
+// - recognized WITH wear    → single query (e.g. "AK-47 | Redline (Field-Tested)")
+// - recognized WITHOUT wear → one query per wear tier (matches all wears)
+// - unrecognized            → single pass-through query (unchanged behavior)
+export function expandWatchQueries(input: string): string[] {
+  const result = normalizeWatchItem(input);
+  if (!result.recognized || result.wear) {
+    return [result.normalized];
+  }
+  return WEAR_TIERS.map((wear) => `${result.normalized} (${wear})`);
 }
