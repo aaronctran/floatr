@@ -2,6 +2,7 @@
 
 import type { Deal } from '../types';
 import { fetchRecentListings, fetchWatchedItemListings } from '../services/csfloatApi';
+import { expandWatchQueries } from '../services/watchlist';
 import { evaluateListing } from '../services/scoring';
 import {
   getSettings,
@@ -127,17 +128,37 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
   const apiKey = settings.apiKey || undefined;
 
   if (watchlist.length > 0) {
-    console.log(
-      `[Floatr] API Call — watchlist mode, items: [${watchlist.slice(0, 5).join(', ')}], limit per item: ${Math.min(limit, 20)}`
-    );
-    const all: any[] = [];
+    // Cap total API calls per poll: wear-less entries expand to up to 5
+    // market_hash_name queries (one per wear tier).
+    const MAX_WATCH_QUERIES = 10;
+    const queries: Array<{ item: string; query: string }> = [];
     for (const name of watchlist.slice(0, 5)) {
+      for (const query of expandWatchQueries(name)) {
+        if (queries.length >= MAX_WATCH_QUERIES) break;
+        queries.push({ item: name, query });
+      }
+      if (queries.length >= MAX_WATCH_QUERIES) break;
+    }
+    console.log(
+      `[Floatr] API Call — watchlist mode, ${watchlist.length} item(s) → ${queries.length} quer(ies), per-query limit: ${Math.min(limit, 20)}`
+    );
+
+    const all: any[] = [];
+    const seenIds = new Set<string>();
+    for (const { item, query } of queries) {
       try {
-        const data = await fetchWatchedItemListings(name, { limit: Math.min(limit, 20) }, apiKey);
-        console.log(`[Floatr] API Response — "${name}": ${data?.data?.length ?? 0} listings`);
-        if (data?.data) all.push(...data.data);
+        const data = await fetchWatchedItemListings(query, { limit: Math.min(limit, 20) }, apiKey);
+        console.log(`[Floatr] API Response — "${item}" → "${query}": ${data?.data?.length ?? 0} listings`);
+        if (data?.data) {
+          for (const listing of data.data) {
+            if (!seenIds.has(listing.id)) {
+              seenIds.add(listing.id);
+              all.push(listing);
+            }
+          }
+        }
       } catch (e: any) {
-        console.warn(`[Floatr] API Error — watchlist item "${name}":`, e.message);
+        console.warn(`[Floatr] API Error — watchlist item "${item}" (${query}):`, e.message);
       }
     }
     return all;
