@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Inbox, AlertCircle } from 'lucide-react';
+import { Inbox, AlertCircle, Undo2 } from 'lucide-react';
 import type { Deal } from '../../types';
 import SkinDealGroup from './SkinDealGroup';
 import { getSettings } from '../../services/storage';
 import ScanProgress from './ScanProgress';
 import { groupDealsBySkin } from '../../services/dealGroups';
+import SectionHelp from './SectionHelp';
 
 export default function DealsTab() {
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -77,17 +78,18 @@ export default function DealsTab() {
 
   return (
     <div className="animate-[fadeIn_0.25s_ease]">
-      <ScanProgress />
-      <div className="mb-3 space-y-2">
-        <p className="text-[10px] text-text-muted">Adjust your search and sticker preferences in Filters. Hidden deals stay hidden through polling and popup reopening until the browser session ends.</p>
-        {dismissedCount > 0 && <button onClick={() => void dismiss({ reset: true })} className="text-xs text-accent-blue">Restore hidden deals ({dismissedCount})</button>}
-      </div>
+      <ScanProgress onScan={handlePollNow} loading={loading} />
       {/* Actions */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs text-text-muted">
-          {dealCount > 0 ? `${dealCount} deals · ${groups.length} skins` : 'No deals yet'}
-        </span>
-        <div className="flex gap-1.5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-text-primary">{dealCount} deals</span>
+          <span className="text-[11px] text-text-muted">· {groups.length} skins</span>
+          <SectionHelp label="deals">
+            Adjust your search and sticker preferences in Filters. Best deals appear first: qualifying matches, sticker value-to-price ratio, then lowest price. Select a skin to expand. Hidden deals stay hidden until the browser session ends.
+          </SectionHelp>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {dismissedCount > 0 && <button onClick={() => void dismiss({ reset: true })} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-accent-blue hover:bg-accent-blue/10"><Undo2 className="h-3 w-3" aria-hidden="true" />Restore ({dismissedCount})</button>}
           {deals.length > 0 && (
             <button
               onClick={handleClearDeals}
@@ -96,14 +98,6 @@ export default function DealsTab() {
               Clear
             </button>
           )}
-          <button
-            onClick={handlePollNow}
-            disabled={loading}
-            className="px-2.5 py-1 text-[11px] text-accent-blue hover:text-on-accent border border-accent-blue/30 hover:bg-accent-blue rounded-md transition-all flex items-center gap-1 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Polling…' : 'Poll Now'}
-          </button>
         </div>
       </div>
 
@@ -124,7 +118,6 @@ export default function DealsTab() {
         </div>
       ) : (
         <div className="space-y-2.5">
-          <p className="text-[10px] text-text-muted">Best deals first: qualifying matches, sticker value-to-price ratio, then lowest price. Select a skin to expand.</p>
           {groups.map((group) => (
             <SkinDealGroup key={group.name} name={group.name} deals={group.deals} onDismiss={dismiss} />
           ))}
