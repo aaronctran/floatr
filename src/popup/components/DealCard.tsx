@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ExternalLink, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { ExternalLink, X, ChevronDown, ChevronUp, Sparkles, Crosshair } from 'lucide-react';
 import type { Deal } from '../../types';
 
 interface Props {
@@ -22,7 +22,7 @@ function getRarityClass(rarity?: string) {
 }
 
 function getFloatRarityText(floatValue: number | null) {
-  if (!floatValue) return '—';
+  if (floatValue === null) return '—';
   if (floatValue < 0.01) return 'Top 1%';
   if (floatValue < 0.05) return 'Top 5%';
   if (floatValue < 0.10) return 'Top 10%';
@@ -32,12 +32,39 @@ function getFloatRarityText(floatValue: number | null) {
 
 export default function DealCard({ deal, onDismiss }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+  const confirmationId = useId();
+  const hideButton = useRef<HTMLButtonElement>(null);
+  const [confirmingHide, setConfirmingHide] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const [hideError, setHideError] = useState<string | null>(null);
+  const keepDeal = () => {
+    setConfirmingHide(false);
+    setHideError(null);
+    hideButton.current?.focus();
+  };
+  const confirmHide = async () => {
+    if (hiding) return;
+    setHiding(true);
+    setHideError(null);
+    try {
+      await onDismiss({ id: deal.id });
+      setConfirmingHide(false);
+    } catch (error) {
+      setHideError(error instanceof Error ? error.message : 'Could not hide this deal. Try again.');
+    } finally {
+      setHiding(false);
+    }
+  };
 
   const item = deal.item || {};
   const name = deal.marketHashName || 'Unknown Item';
   const isSt = name.includes('StatTrak™');
   const isSv = name.includes('Souvenir');
   const cleanName = name.replace('StatTrak™ ', '').replace('Souvenir ', '');
+  const separator = cleanName.indexOf(' | ');
+  const weaponName = separator >= 0 ? cleanName.slice(0, separator) : 'Skin';
+  const skinName = (separator >= 0 ? cleanName.slice(separator + 3) : cleanName).replace(/ \([^)]*\)$/, '');
   const rarityClass = getRarityClass(item.rarity);
 
   const iconUrl = item.icon_url
@@ -45,86 +72,102 @@ export default function DealCard({ deal, onDismiss }: Props) {
     : null;
 
   const stickers = deal.stickers || [];
+  const hasFloatMatch = deal.reasons.some((reason) => reason.type === 'rare_float');
+  const matchSignals = [...deal.reasons].sort((a, b) => {
+    const order = { sticker_arbitrage: 0, rare_float: 1, api_test: 2 };
+    return (order[a.type] ?? 2) - (order[b.type] ?? 2);
+  });
 
   return (
     <div
-      className={`bg-bg-card border border-ui-border/[0.06] rounded-xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/30 hover:border-ui-border/10 hover:-translate-y-0.5 ${
-        isSt ? 'border-l-[3px] border-l-amber-500' : isSv ? 'border-l-[3px] border-l-yellow-400' : ''
+      className={`bg-bg-card border border-ui-border/10 border-l-[3px] rounded-xl overflow-hidden transition-all hover:shadow-lg hover:border-ui-border/20 ${
+        isSt || isSv ? 'border-l-accent-amber' : 'border-l-accent-blue'
       }`}
+      style={hasFloatMatch ? { borderLeftColor: 'rgb(var(--float-banner, 37 99 235))' } : undefined}
     >
-      {/* Summary */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 p-2.5 text-left"
-      >
-        {/* Thumbnail */}
-        <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-[#1a2235] to-bg-secondary flex items-center justify-center flex-shrink-0 border border-ui-border/[0.06] overflow-hidden">
-          {iconUrl ? (
-            <img src={iconUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-          ) : (
-            <span className="text-[9px] text-accent-blue font-semibold">[img]</span>
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-xs truncate tracking-tight">
-            {isSt && <span className="text-amber-400 font-bold text-[10px] mr-0.5">ST</span>}
-            {isSv && <span className="text-yellow-400 font-bold text-[10px] mr-0.5">SV</span>}
-            <span className={rarityClass}>{cleanName}</span>
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-sm font-bold text-accent-blue tracking-tight">
-              {deal.priceDisplay || '$0.00'}
+      {/* Match signals */}
+      <div className="border-b border-ui-border/10">
+        {matchSignals.map((reason, index) => (
+          <div key={index} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[11px] font-semibold ${reason.type === 'sticker_arbitrage' ? 'bg-accent-amber/10' : reason.type === 'rare_float' ? '' : 'bg-ui-overlay/5 text-text-secondary'}`}
+            style={reason.type === 'sticker_arbitrage' ? { color: 'light-dark(#92400e, #fbbf24)' } : reason.type === 'rare_float' ? {
+              color: 'rgb(var(--float-banner-foreground, 255 255 255))', backgroundColor: 'rgb(var(--float-banner, 37 99 235))',
+            } : undefined}>
+            <span className="inline-flex items-center gap-1.5">
+              {reason.type === 'sticker_arbitrage' ? <Sparkles className="w-3.5 h-3.5" aria-hidden="true" /> : reason.type === 'rare_float' ? <Crosshair className="w-3.5 h-3.5" aria-hidden="true" /> : null}
+              {reason.type === 'sticker_arbitrage' ? 'Sticker value' : reason.type === 'rare_float' ? 'Float match' : 'API test'}
+            </span>
+            <span className={`tabular-nums shrink-0 ${reason.type === 'rare_float' ? 'font-mono' : ''}`}>
+              {reason.type === 'sticker_arbitrage' && deal.priceCents > 0
+                ? `${Math.round(deal.stickerValueCents / deal.priceCents * 100)}% of price`
+                : reason.type === 'rare_float' ? deal.floatValue?.toFixed(6) ?? '—' : ''}
             </span>
           </div>
-          <div className="flex gap-1 mt-1 flex-wrap items-center">
-            {deal.reasons.map((r, i) => (
-              <span
-                key={i}
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tracking-wide ${
-                  r.type === 'sticker_arbitrage'
-                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                    : r.type === 'rare_float'
-                    ? 'bg-accent-blue/10 text-accent-blue border border-accent-blue/20'
-                    : 'bg-ui-overlay/5 text-text-muted border border-ui-border/10'
-                }`}
-              >
-                {r.type === 'sticker_arbitrage' ? 'sticker arb' : r.type === 'rare_float' ? 'float match' : 'API test'}
-              </span>
-            ))}
-            {deal.stickerValueCents > 0 && (
-              <span className="text-[10px] text-amber-400 font-bold">
-                ${(deal.stickerValueCents / 100).toFixed(2)} stickers
-              </span>
-            )}
+        ))}
+      </div>
+      <div className="p-3">
+        <div className="flex items-start gap-2.5">
+          <div className="w-14 h-14 shrink-0 rounded-lg bg-bg-secondary border border-ui-border/10 overflow-hidden flex items-center justify-center">
+            {iconUrl ? <img src={iconUrl} alt={cleanName} className="w-full h-full object-contain" loading="lazy" />
+              : <span className="text-[10px] text-text-muted">No image</span>}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] text-text-muted">{weaponName}{item.wear_name ? ` · ${item.wear_name}` : ''}</p>
+            <h3 className={`text-sm font-semibold leading-snug break-words ${rarityClass}`}>
+              {isSt && <span className="text-accent-amber mr-1">ST</span>}
+              {isSv && <span className="text-accent-amber mr-1">SV</span>}
+              {skinName}
+            </h3>
+            <div className="mt-1 text-xl font-bold tracking-tight text-text-primary tabular-nums">{deal.priceDisplay || '$0.00'}</div>
           </div>
         </div>
-
-        {/* Meta */}
-        <div className="text-right text-[11px] text-text-muted flex-shrink-0 leading-relaxed">
-          <div>Float: {deal.floatValue ? deal.floatValue.toFixed(4) : '—'}</div>
-          <div className="mt-0.5">
-            {expanded ? <ChevronUp className="w-3 h-3 mx-auto" /> : <ChevronDown className="w-3 h-3 mx-auto" />}
-          </div>
+        <dl className="grid grid-cols-3 gap-2 my-3 text-[10px] text-text-muted">
+          <div><dt>Float</dt><dd className="mt-0.5 text-xs font-semibold text-text-primary tabular-nums">{deal.floatValue?.toFixed(6) ?? '—'}</dd></div>
+          <div><dt>Sticker value</dt><dd className="mt-0.5 text-xs font-semibold text-text-primary tabular-nums">{deal.stickerValueCents > 0 ? `$${(deal.stickerValueCents / 100).toFixed(2)}` : '—'}</dd></div>
+          <div><dt>Pattern</dt><dd className="mt-0.5 text-xs font-semibold text-text-primary tabular-nums">{item.paint_seed ?? '—'}</dd></div>
+        </dl>
+        <div className="flex items-center gap-1.5">
+          <a href={`https://csfloat.com/item/${deal.id}`} target="_blank" rel="noreferrer"
+            className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-accent-blue px-2 py-2 text-[11px] font-semibold text-on-accent hover:bg-accent-blue-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue">
+            <ExternalLink className="w-3 h-3" aria-hidden="true" />View listing
+          </a>
+          <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-ui-border/15 px-2 py-2 text-[11px] text-text-secondary hover:bg-ui-overlay/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue">
+            Details {expanded ? <ChevronUp className="w-3 h-3" aria-hidden="true" /> : <ChevronDown className="w-3 h-3" aria-hidden="true" />}
+          </button>
+          <button ref={hideButton} type="button" disabled={hiding} onClick={() => { setConfirmingHide(true); setHideError(null); }} aria-label={`Hide listing ${deal.id} for this session`}
+            aria-expanded={confirmingHide} aria-controls={confirmationId}
+            title="Hide for this session"
+            className="inline-flex items-center justify-center rounded-md border border-ui-border/15 p-2 text-text-muted transition-colors hover:text-accent-red hover:bg-accent-red/10 hover:border-accent-red/40 focus-visible:text-accent-red focus-visible:bg-accent-red/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-red active:text-accent-red active:bg-accent-red/20">
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
         </div>
-      </button>
-
-      <button
-        onClick={() => void onDismiss({ id: deal.id })}
-        aria-label={`Hide listing ${deal.id} for this session`}
-        className="mx-2.5 mb-2.5 px-2 py-1 text-[11px] text-text-muted hover:text-accent-red border border-ui-border/10 rounded-md flex items-center gap-1"
-      >
-        <X className="w-3 h-3" /> Hide this deal for session
-      </button>
-
+      </div>
+      {confirmingHide && (
+        <div id={confirmationId} role="group" aria-labelledby={`${confirmationId}-title`}
+          className="border-t border-ui-border/15 bg-bg-card p-3"
+          onKeyDown={(event) => { if (event.key === 'Escape' && !hiding) { event.stopPropagation(); keepDeal(); } }}>
+          <h4 id={`${confirmationId}-title`} className="text-xs font-semibold text-text-primary">Hide this deal?</h4>
+          <p className="text-[11px] text-text-secondary mt-1 break-words">{cleanName} · {deal.priceDisplay}</p>
+          <p className="text-[11px] text-text-muted mt-1">Hidden for this browser session. Restore it from Deals.</p>
+          <div className="flex flex-wrap justify-end gap-2 mt-3">
+            <button type="button" autoFocus disabled={hiding} onClick={keepDeal}
+              className="inline-flex items-center justify-center rounded-md border border-accent-green/40 bg-accent-green/15 px-3 py-2 text-xs font-semibold transition-colors hover:bg-accent-green/25 active:bg-accent-green/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-green disabled:opacity-50"
+              style={{ color: 'light-dark(#166534, #4ade80)' }}>Keep deal</button>
+            <button type="button" disabled={hiding} onClick={() => void confirmHide()}
+              className="inline-flex items-center justify-center rounded-md bg-accent-red px-3 py-2 text-xs font-semibold text-white transition-colors hover:brightness-110 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-red disabled:opacity-50">
+              {hiding ? 'Hiding…' : 'Hide deal'}
+            </button>
+          </div>
+          {hideError && <p role="alert" className="mt-2 text-xs text-accent-red">{hideError}</p>}
+        </div>
+      )}
       {/* Detail */}
       {expanded && (
-        <div className="border-t border-ui-border/[0.06] p-3 animate-[slideDown_0.2s_ease]">
+        <div id={detailsId} className="border-t border-ui-border/[0.06] p-3 animate-[slideDown_0.2s_ease]">
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-1.5 mb-2.5">
             <StatBox label="Float" value={deal.floatValue?.toFixed(6) || '—'} />
-            <StatBox label="Pattern" value={item.paint_seed || '—'} />
+            <StatBox label="Pattern" value={item.paint_seed ?? '—'} />
             <StatBox label="Wear" value={item.wear_name || '—'} />
             <StatBox label="Float Rarity" value={getFloatRarityText(deal.floatValue)} good />
           </div>

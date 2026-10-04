@@ -69,7 +69,6 @@ export default function FloatRangeInput({ min, max, selectedWears, onChange }: P
           </label>
         ))}
       </div>
-      <p className="text-[10px] text-text-muted">Select multiple wears, then drag the upper handle for minimum and lower handle for maximum. Unselected wears stay excluded. Save Filters to apply.</p>
       {!selected.length && <p className="text-[10px] text-amber-400">Select at least one wear condition to receive deals.</p>}
     </div>
   );

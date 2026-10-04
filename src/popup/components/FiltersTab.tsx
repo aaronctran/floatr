@@ -7,6 +7,7 @@ import ScanProgress from './ScanProgress';
 import WatchlistInput from './WatchlistInput';
 import FloatRangeInput from './FloatRangeInput';
 import StickerFilter from './StickerFilter';
+import SectionHelp from './SectionHelp';
 import { useScanningState } from '../../hooks/useScanningState';
 
 const SENSITIVITY_MAP: Record<SensitivityLevel, { label: string; stickerRatio: number; desc: string }> = {
@@ -111,9 +112,8 @@ export default function FiltersTab() {
   return (
     <div className="space-y-4 animate-[fadeIn_0.25s_ease]">
       {/* Polling Control */}
-      <Section title="Polling Control">
+      <Section title="Polling Control" help="Start or stop scanning for deals. Requests are paced two seconds apart. A rate limit stops scanning; restart after the cooldown. Starting scanning also applies your current filter settings.">
         <ScanProgress />
-        <p className="text-[10px] text-text-muted mb-2">Requests are paced two seconds apart. A rate limit stops scanning; restart after the cooldown.</p>
         <button
           onClick={toggleEnabled}
           disabled={saving}
@@ -128,14 +128,28 @@ export default function FiltersTab() {
         </button>
         <p className="text-[11px] text-text-muted mt-1.5">
           {settings.enabled
-            ? `Active — checking for deals every ${settings.pollIntervalMinutes} minutes`
-            : 'Paused — click to start finding deals'}
+            ? `Active · every ${settings.pollIntervalMinutes} min`
+            : 'Scanning paused'}
         </p>
       </Section>
 
       {/* Polling Config */}
-      <Section title="Polling Configuration">
-        <div className="grid grid-cols-2 gap-2">
+      <Section title="Polling Configuration" help="Choose how often to scan and how many listings to review per poll. Presets change the interval only. Suggested batch: 30 without an API key; up to 50 with a key. Use Customize for exact values, then Save Filters to apply.">
+        <div role="group" aria-label="Scan interval presets" className="grid grid-cols-3 gap-2">
+          {([{ label: 'Frequent', minutes: 1 }, { label: 'Standard', minutes: 3 }, { label: 'Relaxed', minutes: 10 }] as const).map((preset) => (
+            <button key={preset.minutes} type="button" aria-pressed={settings.pollIntervalMinutes === preset.minutes}
+              onClick={() => updateField('pollIntervalMinutes', preset.minutes)}
+              className={`rounded-md border px-2 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary ${settings.pollIntervalMinutes === preset.minutes
+                ? 'bg-accent-blue text-on-accent border-accent-blue'
+                : 'bg-bg-card text-text-secondary border-ui-border/10 hover:border-accent-blue/40 hover:bg-accent-blue/5'}`}>
+              {preset.label}
+              <span className="block mt-1 text-[11px] font-normal">Every {preset.minutes} min</span>
+            </button>
+          ))}
+        </div>
+        <details className="mt-3">
+          <summary className="text-xs text-accent-blue cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-sm">Customize interval and batch size</summary>
+          <div className="grid grid-cols-2 gap-2 mt-3">
           <NumberField
             label="Interval (minutes)"
             value={settings.pollIntervalMinutes}
@@ -150,21 +164,24 @@ export default function FiltersTab() {
             min={1}
             max={50}
           />
+          </div>
+        </details>
+        <div className="mt-3 rounded-md border border-ui-border/10 bg-bg-card p-3">
+          <p className="text-xs font-medium text-text-primary" aria-live="polite">
+            Every {settings.pollIntervalMinutes} {settings.pollIntervalMinutes === 1 ? 'minute' : 'minutes'} · up to {settings.maxListingsPerPoll} listings per poll
+          </p>
         </div>
-        <p className="text-[10px] text-text-muted mt-1">30 is safe without an API key. 50 with a key.</p>
       </Section>
 
       {/* Watchlist */}
-      <Section title="Watchlist">
-        <p className="text-[10px] text-text-muted mb-1">Watchlist changes save automatically.</p>
+      <Section title="Watchlist" help="Enter one skin per line using a full name (Weapon | Skin (Wear)) or shorthand such as ak redline ft. Use ↑/↓ and Enter to select suggestions; Shift+Enter adds a line. Without a wear suffix, all available wears are scanned, subject to Float Range filters. Edit changes a skin; Pause excludes it until resumed. Changes save automatically. Pausing all skins stops matches; an empty watchlist scans all recent listings.">
+        <p className="text-[11px] text-text-muted mb-1">Auto-saves</p>
         <label className="block text-xs font-semibold text-text-secondary mb-1">Items to watch (one per line)</label>
         <WatchlistInput
           value={watchlistDraft ?? ''}
           onChange={changeWatchlist}
         />
-        <p className="text-[10px] text-text-muted mt-1">
-          Full name (<span className="text-text-secondary">Weapon | Skin (Wear)</span>) or shorthand (<span className="text-text-secondary">ak redline ft</span>) — one per line. Empty = scan all recent listings (firehose mode).
-        </p>
+        {!watchlistDraft?.trim() && <p className="text-[11px] text-text-muted mt-1">Empty watchlist scans all recent listings.</p>}
         {watchCorrections.length > 0 && (
           <p className="text-[10px] text-accent-green mt-1">
             Auto-corrected: {watchCorrections.map((r) => r.normalized).join(' · ')}
@@ -172,21 +189,21 @@ export default function FiltersTab() {
         )}
       </Section>
 
-      <Section title="Applied Stickers">
+      <Section title="Applied Stickers" help="Choose listings with stickers, without stickers, or both. Saves automatically and applies to deals and notifications.">
         <StickerFilter value={settings.stickerFilter ?? 'all'} onChange={(value) => {
           updateField('stickerFilter', value);
           void setSettings({ stickerFilter: value }).catch((err) => setStatusMessage(err.message));
         }} />
-        <p className="text-[10px] text-text-muted mt-1">Saves automatically. Applies to deals and notifications.</p>
+        <p className="text-[11px] text-text-muted mt-1">Auto-saves</p>
       </Section>
       {/* Float Range */}
-      <Section title="Float Range">
+      <Section title="Float Range" help="Wear buttons apply across the watchlist. Select multiple wear conditions; unselected wears stay excluded. Drag the upper handle for minimum float and the lower handle for maximum, or enter exact bounds. Save Filters to apply.">
         <FloatRangeInput min={settings.minFloat} max={settings.maxFloat} selectedWears={settings.selectedWears}
           onChange={(range) => setLocalSettings((current) => current ? { ...current, ...range } : current)} />
       </Section>
 
       {/* Sensitivity */}
-      <Section title="Deal Sensitivity">
+      <Section title="Deal Sensitivity" help="Sensitivity compares sticker value with the listing price. Strict requires at least 70%, Balanced 50%, and Loose 30%. Strict flags fewer deals; Loose may include more noise. Save Filters to apply.">
         <div className="flex gap-1.5">
           {(Object.keys(SENSITIVITY_MAP) as SensitivityLevel[]).map((level) => (
             <button
@@ -203,13 +220,13 @@ export default function FiltersTab() {
           ))}
         </div>
         <p className="text-[11px] text-text-muted mt-2 leading-relaxed">
-          <strong className="text-text-secondary">{SENSITIVITY_MAP[sensitivity].label}:</strong>{' '}
-          {SENSITIVITY_MAP[sensitivity].desc}
+          Stickers ≥{Math.round(SENSITIVITY_MAP[sensitivity].stickerRatio * 100)}% of listing price
         </p>
       </Section>
 
       {/* Actions */}
       <div className="space-y-2 pt-2">
+        <p className="text-[11px] text-text-muted">Save polling, float, and sensitivity settings.</p>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -229,13 +246,14 @@ export default function FiltersTab() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, help, children }: { title: string; help?: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2.5 flex items-center gap-2">
-        {title}
+      <div className="mb-2.5 flex items-center gap-2">
+        <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{title}</h3>
         <span className="flex-1 h-px bg-gradient-to-r from-ui-border/[0.06] to-transparent" />
-      </h3>
+        {help && <SectionHelp label={title}>{help}</SectionHelp>}
+      </div>
       {children}
     </div>
   );
