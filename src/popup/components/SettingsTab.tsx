@@ -42,15 +42,19 @@ export default function SettingsTab() {
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-text-primary">UI Colors</h2>
       <p className="text-xs text-text-muted">Choose a palette. Colors apply and save immediately.</p>
-      <div role="group" aria-label="UI color palette" className="grid grid-cols-2 gap-2">
-        {THEMES.map((palette) => <button key={palette.id} type="button" disabled={!ready} aria-pressed={theme === palette.id}
-          onClick={() => void chooseTheme(palette.id)}
-          className={`rounded-lg border p-3 text-left text-xs ${theme === palette.id ? 'border-accent-blue ring-1 ring-accent-blue' : 'border-ui-border/15'}`}
-          style={{ background: palette.bg, color: palette.text }}>
-          <span className="mb-2 flex gap-1.5" aria-hidden="true">{[palette.card, palette.muted, palette.accent].map((color) => <span key={color} className="h-4 w-4 rounded-full" style={{ background: color }} />)}</span>
-          <span>{palette.name}{theme === palette.id ? ' ✓' : ''}</span>
-        </button>)}
-      </div>
+      <fieldset disabled={!ready} className="grid grid-cols-4 gap-x-2 gap-y-4 pt-2">
+        <legend className="sr-only">UI color palette</legend>
+        {THEMES.map((palette) => <label key={palette.id} className="relative flex min-w-0 cursor-pointer flex-col items-center gap-2 py-1 text-center">
+          <input type="radio" name="ui-theme" value={palette.id} checked={theme === palette.id}
+            onChange={() => void chooseTheme(palette.id)} className="peer sr-only" />
+          <span aria-hidden="true"
+            className="relative h-10 w-10 rounded-full border border-ui-border/20 peer-checked:ring-2 peer-checked:ring-accent-blue peer-checked:ring-offset-2 peer-checked:ring-offset-bg-primary peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-accent-blue peer-disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${palette.bg} 0% 50%, ${palette.accent} 50% 100%)` }}>
+            {theme === palette.id && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-blue text-[10px] text-on-accent">✓</span>}
+          </span>
+          <span className="text-[11px] leading-snug text-text-muted peer-checked:font-semibold peer-checked:text-text-primary">{palette.name}</span>
+        </label>)}
+      </fieldset>
     </section>
     {message && <p role="status" className="text-xs text-text-secondary">{message}</p>}
   </div>;
