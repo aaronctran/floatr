@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
   pollIntervalMinutes: 3,
   watchlist: [],
+  stickerFilter: 'all',
   stickerRatioThreshold: 0.5,
   stickerRealizationRate: 0.5,
   minFloat: 0.00,
@@ -13,16 +14,28 @@ const DEFAULT_SETTINGS: Settings = {
   sensitivity: 'balanced',
 };
 
-export async function getSettings(): Promise<Settings> {
+async function readSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get('settings');
   return { ...DEFAULT_SETTINGS, ...(settings || {}) };
 }
 
-export async function setSettings(partial: Partial<Settings>): Promise<Settings> {
-  const current = await getSettings();
-  const next = { ...current, ...partial };
-  await chrome.storage.local.set({ settings: next });
-  return next;
+// Serialize rapid edits so an older write cannot replace the latest watchlist.
+let settingsWrites: Promise<unknown> = Promise.resolve();
+
+export async function getSettings(): Promise<Settings> {
+  await settingsWrites;
+  return readSettings();
+}
+
+export function setSettings(partial: Partial<Settings>): Promise<Settings> {
+  const write = settingsWrites.then(async () => {
+    const current = await readSettings();
+    const next = { ...current, ...partial };
+    await chrome.storage.local.set({ settings: next });
+    return next;
+  });
+  settingsWrites = write.catch(() => undefined);
+  return write;
 }
 
 // --- Seen listing IDs (de-dupe across polls) ---
@@ -64,6 +77,45 @@ export async function saveTestDeals(deals: import('../types').Deal[]): Promise<v
   const arr = [...deals, ...(existing as import('../types').Deal[])];
   const trimmed = arr.slice(0, MAX_DEALS);
   await chrome.storage.local.set({ [DEALS_KEY]: trimmed });
+}
+
+export interface DismissedDeals { ids: string[] }
+let dismissalWrites: Promise<unknown> = Promise.resolve();
+
+export async function getDismissedDeals(): Promise<DismissedDeals> {
+  await dismissalWrites;
+  const { dismissedDeals } = await chrome.storage.session.get('dismissedDeals');
+  return { ids: dismissedDeals?.ids ?? [] };
+}
+
+/** Session storage survives popup and worker restarts, but resets with the browser session. */
+export function dismissDeal(target: { id?: string; reset?: boolean }) {
+  const write = dismissalWrites.then(async () => {
+    const { dismissedDeals } = await chrome.storage.session.get('dismissedDeals');
+    const current: DismissedDeals = dismissedDeals ?? { ids: [] };
+    const next = target.reset ? { ids: [] } : {
+      ids: [...new Set([...current.ids, ...(target.id ? [target.id] : [])])],
+    };
+    await chrome.storage.session.set({ dismissedDeals: next });
+  });
+  dismissalWrites = write.catch(() => undefined);
+  return write;
+}
+
+/** Publish one complete scan, replacing stale cards from previous scans. */
+export async function replaceDealLog(deals: import('../types').Deal[]): Promise<void> {
+  // Each query already has a listing limit; a global slice hides later skins.
+  await chrome.storage.local.set({ [DEALS_KEY]: deals });
+}
+
+let scanStatusWrites: Promise<unknown> = Promise.resolve();
+export function setScanStatus(partial: Partial<import('../types').ScanStatus>): Promise<void> {
+  const write = scanStatusWrites.then(async () => {
+    const { scanStatus } = await chrome.storage.local.get('scanStatus');
+    await chrome.storage.local.set({ scanStatus: { running: false, ...scanStatus, ...partial } });
+  });
+  scanStatusWrites = write.catch(() => undefined);
+  return write;
 }
 
 export async function clearDealLog(): Promise<void> {

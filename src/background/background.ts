@@ -1,51 +1,97 @@
 // background.ts — Floatr polling engine (Manifest V3 service worker)
 
 import type { Deal } from '../types';
+import { getVisibleDeals, isDealVisible } from '../services/dealVisibility';
 import { fetchRecentListings, fetchWatchedItemListings } from '../services/csfloatApi';
-import { expandWatchQueries } from '../services/watchlist';
+import { expandWatchQueries, activeWatchlist, matchesWatchlist } from '../services/watchlist';
 import { evaluateListing } from '../services/scoring';
+import { CSFloatRateLimitError } from '../services/requestPacing';
 import {
   getSettings,
+  getDismissedDeals,
+  dismissDeal,
+  setSettings,
   hasSeen,
   markSeen,
-  logDeal,
-  getDealLog,
+  replaceDealLog,
+  setScanStatus,
   clearDealLog,
   updateBadge,
 } from '../services/storage';
 
-const ALARM_NAME = 'floatr-poll';
-const MIN_POLL_INTERVAL_MINUTES = 1;
-const MAX_POLL_INTERVAL_MINUTES = 15;
-const MAX_CONSECUTIVE_ERRORS = 3;
-const ERROR_BACKOFF_INCREMENT_MINUTES = 1;
+import { POLL_ALARM, syncPollingAlarm } from '../services/pollingSchedule';
 
-let consecutiveErrors = 0;
-let currentIntervalMinutes: number | null = null;
+const startupReady = setScanStatus({ running: false }).then(syncPollingAlarm);
+void startupReady.catch((err) => console.error('[Floatr] Alarm setup failed:', err));
+let activePoll: Promise<Awaited<ReturnType<typeof executePollCycle>>> | null = null;
+let watchlistRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+let rescanRequested = false;
+
+async function stopForRateLimit(error: CSFloatRateLimitError) {
+  clearTimeout(watchlistRefreshTimer);
+  rescanRequested = false;
+  await setSettings({ enabled: false });
+  await syncPollingAlarm();
+  await setScanStatus({ running: false, nextScanAt: null, error: error.message });
+}
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install' || details.reason === 'update') {
-    const settings = await getSettings();
-    await resetAlarm(settings);
-    console.log('[Floatr] Installed. Alarm set.', settings);
+    await syncPollingAlarm();
   }
 });
 
+chrome.runtime.onStartup.addListener(() => { void syncPollingAlarm(); });
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === ALARM_NAME) {
+  if (alarm.name === POLL_ALARM) {
     await runPollCycle();
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.settings) {
+    const before = changes.settings.oldValue;
+    const after = changes.settings.newValue;
+    if (JSON.stringify(before?.watchlist) !== JSON.stringify(after?.watchlist) || before?.stickerFilter !== after?.stickerFilter || JSON.stringify(before?.selectedWears) !== JSON.stringify(after?.selectedWears)) {
+      void updateBadgeFromStorage().catch((err) => console.error('[Floatr] Badge update failed:', err));
+    }
+    if (!after?.enabled) {
+      clearTimeout(watchlistRefreshTimer);
+      rescanRequested = false;
+    } else if (before?.enabled && JSON.stringify(before.watchlist) !== JSON.stringify(after.watchlist)) {
+      // Let the user finish typing; preserve a follow-up if a scan is in flight.
+      clearTimeout(watchlistRefreshTimer);
+      watchlistRefreshTimer = setTimeout(() => {
+        if (activePoll) rescanRequested = true;
+        else void runPollCycle().catch((err) => console.error('[Floatr] Watchlist refresh failed:', err));
+      }, 1000);
+    }
+    if (before?.enabled !== after?.enabled || before?.pollIntervalMinutes !== after?.pollIntervalMinutes) {
+      void syncPollingAlarm();
+    }
   }
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'poll-now') {
     runPollCycle()
-      .then((result) => sendResponse({ ok: true, result }))
+      .then((result) => sendResponse('error' in result ? { ok: false, error: result.error } : { ok: true, result }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
   if (message.action === 'get-deals') {
-    getDealLog().then((deals) => sendResponse({ deals }));
+    Promise.all([getVisibleDeals(), getSettings(), getDismissedDeals()]).then(([deals, settings, dismissed]) =>
+      sendResponse({ deals, stickerFilter: settings.stickerFilter ?? 'all', dismissedCount: dismissed.ids.length })
+    ).catch((err) => sendResponse({ error: err.message }));
+    return true;
+  }
+  if (message.action === 'dismiss-deal' || message.action === 'restore-dismissed-deals') {
+    const target = message.action === 'restore-dismissed-deals' ? { reset: true } : {
+      id: typeof message.id === 'string' ? message.id : undefined,
+    };
+    dismissDeal(target).then(updateBadgeFromStorage).then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
   if (message.action === 'clear-deals') {
@@ -59,10 +105,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
       try {
         const settings = await getSettings();
-        const apiKey = settings.apiKey || undefined;
-        const data = await fetchRecentListings({ limit: message.limit || 5 }, apiKey);
-        sendResponse({ ok: true, listings: data?.data || [] });
+        const limit = Math.max(1, Math.min(50, Number(message.limit) || 5));
+        const listings = await fetchListingsForMode({ ...settings, maxListingsPerPoll: limit });
+        sendResponse({ ok: true, listings: listings.slice(0, limit) });
       } catch (err: any) {
+        if (err instanceof CSFloatRateLimitError) await stopForRateLimit(err);
         sendResponse({ ok: false, error: err.message });
       }
     })();
@@ -78,7 +125,22 @@ chrome.notifications.onClicked.addListener((notificationId) => {
   }
 });
 
-async function runPollCycle() {
+function runPollCycle() {
+  // Manual and scheduled scans share one in-flight request cycle.
+  if (!activePoll) {
+    clearTimeout(watchlistRefreshTimer);
+    activePoll = startupReady.then(executePollCycle).finally(() => {
+      activePoll = null;
+      if (rescanRequested) {
+        rescanRequested = false;
+        void runPollCycle().catch((err) => console.error('[Floatr] Follow-up scan failed:', err));
+      }
+    });
+  }
+  return activePoll;
+}
+
+async function executePollCycle() {
   const settings = await getSettings();
 
   if (!settings.enabled) {
@@ -91,53 +153,44 @@ async function runPollCycle() {
   );
 
   try {
+    await syncPollingAlarm();
+    await setScanStatus({ running: true, error: null });
     const listings = await fetchListingsForMode(settings);
-    const dealsFound = await processListings(listings, settings);
-
-    if (consecutiveErrors > 0) {
-      consecutiveErrors = 0;
-      await resetAlarm(settings);
-      console.log('[Floatr] Error state cleared — restored normal polling interval.');
+    if (JSON.stringify(await getSettings()) !== JSON.stringify(settings)) {
+      await setScanStatus({ running: false });
+      return { skipped: true, reason: 'settings-changed' };
     }
-
+    const dealsFound = await processListings(listings, settings);
     await updateBadgeFromStorage();
+    await syncPollingAlarm();
+    await setScanStatus({ running: false, lastCompletedAt: Date.now(), listingsChecked: listings.length, dealsFound, error: null });
     console.log(`[Floatr] ✓ Poll complete. ${listings.length} listings checked, ${dealsFound} deals found.`);
     return { listingsChecked: listings.length, dealsFound };
   } catch (err: any) {
     console.error('[Floatr] ✗ Poll failed:', err.message);
-    consecutiveErrors += 1;
-    console.warn(`[Floatr] Consecutive errors: ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}`);
-
-    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-      const newInterval = Math.min(
-        (currentIntervalMinutes || settings.pollIntervalMinutes) + ERROR_BACKOFF_INCREMENT_MINUTES,
-        MAX_POLL_INTERVAL_MINUTES
-      );
-      console.warn(`[Floatr] Backing off to ${newInterval}min after ${consecutiveErrors} errors.`);
-      await chrome.alarms.create(ALARM_NAME, { periodInMinutes: newInterval });
-      currentIntervalMinutes = newInterval;
-    }
-
+    if (err instanceof CSFloatRateLimitError) await stopForRateLimit(err);
+    await setScanStatus({ running: false, error: err.message });
     return { error: err.message };
   }
 }
 
 async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSettings>>) {
-  const watchlist = Array.isArray(settings.watchlist) ? settings.watchlist : [];
+  const watchlist = activeWatchlist(Array.isArray(settings.watchlist) ? settings.watchlist : []);
   const limit = settings.maxListingsPerPoll ?? 30;
   const apiKey = settings.apiKey || undefined;
 
-  if (watchlist.length > 0) {
-    // Cap total API calls per poll: wear-less entries expand to up to 5
-    // market_hash_name queries (one per wear tier).
-    const MAX_WATCH_QUERIES = 10;
+  // An entirely ignored watchlist must not fall back to scanning the marketplace.
+  if (settings.watchlist.some((name) => name.trim())) {
     const queries: Array<{ item: string; query: string }> = [];
-    for (const name of watchlist.slice(0, 5)) {
+    const queryNames = new Set<string>();
+    for (const name of watchlist) {
       for (const query of expandWatchQueries(name)) {
-        if (queries.length >= MAX_WATCH_QUERIES) break;
+        if (!matchesWatchlist(query, settings.watchlist)) continue;
+        const key = query.toLowerCase();
+        if (queryNames.has(key)) continue;
+        queryNames.add(key);
         queries.push({ item: name, query });
       }
-      if (queries.length >= MAX_WATCH_QUERIES) break;
     }
     console.log(
       `[Floatr] API Call — watchlist mode, ${watchlist.length} item(s) → ${queries.length} quer(ies), per-query limit: ${Math.min(limit, 20)}`
@@ -145,22 +198,29 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
 
     const all: any[] = [];
     const seenIds = new Set<string>();
+    let lastError: unknown;
     for (const { item, query } of queries) {
+      // Do not finish a long obsolete queue after the user edits or stops scanning.
+      const current = await getSettings();
+      if (JSON.stringify(current.watchlist) !== JSON.stringify(settings.watchlist) || current.enabled !== settings.enabled) break;
       try {
         const data = await fetchWatchedItemListings(query, { limit: Math.min(limit, 20) }, apiKey);
         console.log(`[Floatr] API Response — "${item}" → "${query}": ${data?.data?.length ?? 0} listings`);
         if (data?.data) {
           for (const listing of data.data) {
-            if (!seenIds.has(listing.id)) {
+            if (!seenIds.has(listing.id) && matchesWatchlist(listing.item?.market_hash_name, [query])) {
               seenIds.add(listing.id);
               all.push(listing);
             }
           }
         }
       } catch (e: any) {
+        if (e instanceof CSFloatRateLimitError) throw e;
+        lastError = e;
         console.warn(`[Floatr] API Error — watchlist item "${item}" (${query}):`, e.message);
       }
     }
+    if (lastError) throw lastError; // Keep the previous list if any query failed.
     return all;
   }
 
@@ -171,17 +231,11 @@ async function fetchListingsForMode(settings: Awaited<ReturnType<typeof getSetti
 }
 
 async function processListings(listings: any[], settings: Awaited<ReturnType<typeof getSettings>>) {
-  let dealsFound = 0;
+  const deals: Deal[] = [];
   const DEBUG = true;
 
   for (const listing of listings) {
     const id = listing.id;
-
-    if (await hasSeen(id)) {
-      if (DEBUG) console.log(`[Floatr] [SKIP] Listing ${id.slice(0, 8)}... already seen.`);
-      continue;
-    }
-    await markSeen(id);
 
     const item = listing.item;
     const mhn = item?.market_hash_name;
@@ -195,8 +249,7 @@ async function processListings(listings: any[], settings: Awaited<ReturnType<typ
       );
     }
 
-    if (result.isDeal) {
-      dealsFound += 1;
+    if (result.isDeal && (!listing.state || listing.state === 'listed')) {
       console.log(
         `[Floatr] [DEAL FOUND] ${mhn} — ${result.reasons.map((r) => r.type).join(', ')}`
       );
@@ -218,12 +271,20 @@ async function processListings(listings: any[], settings: Awaited<ReturnType<typ
         item,
       };
 
-      await logDeal(deal);
-      await fireNotification(deal);
+      deals.push(deal);
     }
   }
 
-  return dealsFound;
+  await replaceDealLog(deals);
+  // Seen IDs suppress repeat notifications, never price/scoring refreshes.
+  for (const deal of deals) {
+    if (!isDealVisible(deal, await getSettings(), await getDismissedDeals())) continue;
+    if (!(await hasSeen(deal.id))) {
+      await fireNotification(deal);
+      await markSeen(deal.id);
+    }
+  }
+  return (await getVisibleDeals()).length;
 }
 
 async function fireNotification(deal: any) {
@@ -248,20 +309,5 @@ async function fireNotification(deal: any) {
 }
 
 async function updateBadgeFromStorage() {
-  const deals = await getDealLog();
-  updateBadge(deals.length);
-}
-
-async function resetAlarm(settings: Awaited<ReturnType<typeof getSettings>>) {
-  const interval = settings.pollIntervalMinutes ?? 3;
-  const safeInterval = Math.max(MIN_POLL_INTERVAL_MINUTES, Math.min(interval, MAX_POLL_INTERVAL_MINUTES));
-
-  await chrome.alarms.clear(ALARM_NAME);
-  if (settings.enabled) {
-    await chrome.alarms.create(ALARM_NAME, { periodInMinutes: safeInterval });
-    currentIntervalMinutes = safeInterval;
-    console.log(`[Floatr] Alarm set: every ${safeInterval} minutes`);
-  } else {
-    console.log('[Floatr] Alarm cleared — polling stopped.');
-  }
+  await updateBadge((await getVisibleDeals()).length);
 }

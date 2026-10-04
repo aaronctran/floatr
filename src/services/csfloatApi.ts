@@ -1,3 +1,5 @@
+import { recordRateLimit, withRequestPacing } from './requestPacing';
+
 const BASE_URL = 'https://csfloat.com/api/v1/listings';
 
 interface FetchListingsParams {
@@ -5,6 +7,10 @@ interface FetchListingsParams {
 }
 
 export async function fetchListings(params: FetchListingsParams, apiKey?: string) {
+  return withRequestPacing(() => performRequest(params, apiKey));
+}
+
+async function performRequest(params: FetchListingsParams, apiKey?: string) {
   const url = new URL(BASE_URL);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') {
@@ -20,21 +26,25 @@ export async function fetchListings(params: FetchListingsParams, apiKey?: string
 
   try {
     const res = await fetch(url.toString(), { headers, signal: controller.signal });
-    clearTimeout(timeoutId);
-
     if (res.status === 429) {
-      throw new Error('CSFloat rate limit hit (429) — try increasing the poll interval.');
+      throw await recordRateLimit(res.headers?.get('Retry-After'));
     }
     if (!res.ok) {
       throw new Error(`CSFloat API error ${res.status}: ${await res.text()}`);
     }
-    return res.json() as Promise<{ data: any[] }>;
+    const body = await res.text();
+    if (!body.trim()) throw new Error('CSFloat returned an empty response body.');
+    const payload = JSON.parse(body);
+    if (Array.isArray(payload)) return { data: payload };
+    if (Array.isArray(payload?.data)) return payload as { data: any[]; cursor?: string };
+    throw new Error('CSFloat returned an unexpected listings response.');
   } catch (err: any) {
-    clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
       throw new Error('CSFloat API request timed out after 15s.');
     }
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

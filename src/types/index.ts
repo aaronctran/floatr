@@ -25,16 +25,27 @@ export interface Deal {
 
 export type SensitivityLevel = 'strict' | 'balanced' | 'loose';
 
+export interface ScanStatus {
+  running: boolean;
+  lastCompletedAt?: number;
+  nextScanAt?: number | null;
+  listingsChecked?: number;
+  dealsFound?: number;
+  error?: string | null;
+}
+
 export interface Settings {
   enabled: boolean;
   apiKey: string;
   pollIntervalMinutes: number;
   maxListingsPerPoll: number;
   watchlist: string[];
+  stickerFilter?: 'all' | 'with' | 'without';
   stickerRatioThreshold: number;
   stickerRealizationRate: number;
   minFloat: number;
   maxFloat: number;
+  selectedWears?: string[];
   sensitivity?: SensitivityLevel;
 }
 

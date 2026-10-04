@@ -1,4 +1,5 @@
 import type { Settings } from '../types';
+import { matchesSelectedWear } from './floatRange';
 
 const WEAR_RANGES = [
   { name: 'Factory New', min: 0.0, max: 0.07 },
@@ -66,7 +67,7 @@ export function evaluateListing(listing: any, { settings }: { settings: Settings
     stickerValueCents,
     stickerRatio,
     floatValue: fv,
-    isDeal: reasons.length > 0,
+    isDeal: reasons.length > 0 && matchesSelectedWear(fv, settings.selectedWears),
     reasons,
   };
 }

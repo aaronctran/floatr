@@ -6,6 +6,8 @@
 //   "★ Karambit | Doppler (Factory New)"
 // Anything it can't confidently resolve is passed through unchanged.
 
+import { SKIN_CATALOG } from '../constants/skins';
+
 export interface WatchItemResult {
   original: string;
   normalized: string;
@@ -21,6 +23,8 @@ const norm = (s: string) =>
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+const catalogByName = new Map(SKIN_CATALOG.map((skin) => [norm(skin.name), skin]));
 
 // --- Wear aliases -----------------------------------------------------------
 const WEAR_ALIASES: Record<string, string> = {
@@ -96,8 +100,8 @@ const WEAPON_ALIASES: Record<string, string> = {
   ump: 'UMP-45',
   ump45: 'UMP-45',
   'ump 45': 'UMP-45',
-  mp7: 'MP-7',
-  'mp 7': 'MP-7',
+  mp7: 'MP7',
+  'mp 7': 'MP7',
   mp5: 'MP5-SD',
   mp5sd: 'MP5-SD',
   'mp5 sd': 'MP5-SD',
@@ -198,12 +202,18 @@ function titleCase(s: string): string {
 export function normalizeWatchItem(input: string): WatchItemResult {
   const original = input.trim();
   if (!original) return { original, normalized: original, recognized: false, wear: null };
+  if (isIgnoredWatchItem(original)) {
+    const result = normalizeWatchItem(original.slice(1).trim());
+    return { ...result, original, normalized: `! ${result.normalized}` };
+  }
 
   let text = original.replace(/★/g, ' ').trim();
 
+  const souvenir = /^souvenir\s+/i.test(text);
+  if (souvenir) text = text.replace(/^souvenir\s+/i, '');
   // StatTrak prefix: "st", "stattrak", "statrak"
   let stattrak = false;
-  const stMatch = text.match(/^(st|stattrak|statrak)[.\s]+/i);
+  const stMatch = text.match(/^(st|stattrak|statrak)™?[.\s]+/i);
   if (stMatch) {
     stattrak = true;
     text = text.slice(stMatch[0].length).trim();
@@ -211,6 +221,13 @@ export function normalizeWatchItem(input: string): WatchItemResult {
 
   // Wear suffix
   const { rest, wear } = extractWear(text);
+
+  const exact = catalogByName.get(norm(rest));
+  if (exact) {
+    const prefix = stattrak ? 'StatTrak™ ' : souvenir ? 'Souvenir ' : '';
+    const name = exact.name.startsWith('★ ') ? `★ ${prefix}${exact.name.slice(2)}` : `${prefix}${exact.name}`;
+    return { original, normalized: `${name}${wear ? ` (${wear})` : ''}`, recognized: true, wear };
+  }
 
   // Split "weapon | skin" if a pipe is present
   let weaponPart = rest;
@@ -233,8 +250,13 @@ export function normalizeWatchItem(input: string): WatchItemResult {
     return { original, normalized: original, recognized: false, wear: null };
   }
 
+  const canonical = catalogByName.get(norm(`${match.weapon} | ${skin}`));
+  if (canonical) {
+    return { ...normalizeWatchItem(`${stattrak ? 'st ' : souvenir ? 'Souvenir ' : ''}${canonical.name}${wear ? ` (${wear})` : ''}`), original };
+  }
+
   const star = KNIFE_NAMES.has(match.weapon) ? '★ ' : '';
-  const st = stattrak ? 'StatTrak™ ' : '';
+  const st = stattrak ? 'StatTrak™ ' : souvenir ? 'Souvenir ' : '';
   const wearSuffix = wear ? ` (${wear})` : '';
   return {
     original,
@@ -266,5 +288,67 @@ export function expandWatchQueries(input: string): string[] {
   if (!result.recognized || result.wear) {
     return [result.normalized];
   }
-  return WEAR_TIERS.map((wear) => `${result.normalized} (${wear})`);
+  const base = result.normalized.replace(/StatTrak™\s*|Souvenir\s*/gi, '');
+  const skin = catalogByName.get(norm(base));
+  if (skin && !skin.wears.length) return [result.normalized];
+  return (skin?.wears ?? WEAR_TIERS).map((wear) => `${result.normalized} (${wear})`);
+}
+
+/** Catalog suggestions for the active line, supporting existing weapon aliases. */
+export function suggestWatchSkins(input: string, limit = 8): string[] {
+  if (isIgnoredWatchItem(input)) {
+    return suggestWatchSkins(input.trim().slice(1).trim(), limit).map((name) => `! ${name}`);
+  }
+  const stattrak = /^(?:★\s*)?(st|stattrak|statrak)™?[.\s]+/i.test(input.trim());
+  const souvenir = /^souvenir\s+/i.test(input.trim());
+  const text = input.trim().replace(/★/g, '').trim().replace(/^(st|stattrak|statrak)™?[.\s]+|^souvenir\s+/i, '');
+  const { rest, wear } = extractWear(text);
+  if (!rest.trim()) return [];
+  const weapon = matchWeapon(rest.replace(/\|/g, ' '));
+  const search = weapon ? `${weapon.weapon} ${weapon.rest}` : rest;
+  const tokens = norm(search).replace(/\|/g, ' ').split(/\s+/).filter(Boolean);
+  const candidates = SKIN_CATALOG.filter((skin) =>
+    (!weapon || skin.weapon === weapon.weapon) &&
+    (!stattrak || skin.stattrak) && (!souvenir || skin.souvenir) &&
+    (!wear || skin.wears.includes(wear)) &&
+    tokens.every((token) => norm(skin.name).includes(token))
+  );
+  return [...new Set(candidates.map((skin) => {
+    const prefix = stattrak ? 'StatTrak™ ' : souvenir ? 'Souvenir ' : '';
+    const name = skin.name.startsWith('★ ') ? `★ ${prefix}${skin.name.slice(2)}` : `${prefix}${skin.name}`;
+    return `${name}${wear ? ` (${wear})` : ''}`;
+  }))].sort().slice(0, limit);
+}
+
+export function replaceWatchlistLine(text: string, caret: number, suggestion: string) {
+  const start = caret === 0 ? 0 : text.lastIndexOf('\n', caret - 1) + 1;
+  const newline = text.indexOf('\n', caret);
+  const end = newline === -1 ? text.length : newline;
+  return { text: text.slice(0, start) + suggestion + text.slice(end), caret: start + suggestion.length };
+}
+
+export function activeWatchlist(items: string[]): string[] {
+  return items.map((item) => item.trim()).filter((item) => item && !isIgnoredWatchItem(item));
+}
+
+/** Ignored entries remain in the saved draft, prefixed with !. */
+export function isIgnoredWatchItem(item: string): boolean {
+  return item.trimStart().startsWith('!');
+}
+
+export function toggleIgnoredWatchLine(text: string, index: number): string {
+  return text.split('\n').map((line, i) => i !== index || !line.trim() ? line :
+    isIgnoredWatchItem(line) ? line.replace(/^(\s*)!\s*/, '$1') : line.replace(/^(\s*)/, '$1! ')
+  ).join('\n');
+}
+
+/** Verify server results and filter historical cards using the same watch queries. */
+export function matchesWatchlist(marketHashName: string | undefined, items: string[]): boolean {
+  const names = activeWatchlist(items);
+  if (!items.some((item) => item.trim())) return true;
+  if (!marketHashName) return false;
+  const key = (name: string) => name.toLowerCase().replace(/\s+/g, ' ').trim();
+  const excluded = items.filter(isIgnoredWatchItem).map((item) => item.trim().slice(1).trim()).filter(Boolean);
+  if (excluded.some((name) => expandWatchQueries(name).some((query) => key(query) === key(marketHashName)))) return false;
+  return names.some((name) => expandWatchQueries(name).some((query) => key(query) === key(marketHashName)));
 }
