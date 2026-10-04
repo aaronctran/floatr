@@ -18,3 +18,31 @@
   .rarity-covert { color: #f87171; }
   .rarity-contraband { color: #fbbf24; }
 }
+
+/* Two independently keyboard-accessible handles on one shared float track. */
+.float-range-handle {
+  position: absolute;
+  left: -8px;
+  top: 0;
+  width: calc(100% + 16px);
+  height: 48px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.float-range-handle::-webkit-slider-runnable-track { background: transparent; }
+.float-range-handle::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background: rgb(var(--accent-blue, 59 130 246));
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+.float-range-min::-webkit-slider-thumb { transform: translateY(-8px); }
+.float-range-max::-webkit-slider-thumb { transform: translateY(8px); }
+.float-range-handle:focus-visible { outline: none; z-index: 2; }
+.float-range-handle:focus-visible::-webkit-slider-thumb { outline: 2px solid rgb(var(--accent-blue, 59 130 246)); outline-offset: 3px; }

@@ -36,7 +36,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         Without it, the extension works fine but polls more gently.
       </p>
 
-      <div className="bg-bg-card border border-white/[0.06] rounded-xl p-3.5 mb-4 text-[11px] text-text-muted leading-relaxed">
+      <div className="bg-bg-card border border-ui-border/[0.06] rounded-xl p-3.5 mb-4 text-[11px] text-text-muted leading-relaxed">
         <strong className="text-text-primary text-xs">How to get your API key:</strong>
         <ol className="list-decimal ml-4 mt-1.5 space-y-0.5">
           <li>
@@ -57,7 +57,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
             Click <strong className="text-text-primary">New Key</strong>
           </li>
           <li>
-            Copy the key (starts with <code className="bg-white/[0.06] px-1 rounded text-[10px]">cf_</code>) and paste it below
+            Copy the key (starts with <code className="bg-ui-overlay/[0.06] px-1 rounded text-[10px]">cf_</code>) and paste it below
           </li>
         </ol>
       </div>
@@ -68,12 +68,12 @@ export default function OnboardingScreen({ onComplete }: Props) {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="Paste your cf_... API key here"
-          className="flex-1 px-3 py-2 bg-bg-card border border-white/[0.06] rounded-md text-text-primary text-xs placeholder:text-text-muted focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all"
+          className="flex-1 px-3 py-2 bg-bg-card border border-ui-border/[0.06] rounded-md text-text-primary text-xs placeholder:text-text-muted focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all"
         />
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-2 bg-gradient-to-br from-blue-600 to-accent-blue text-white rounded-md text-xs font-semibold shadow-lg shadow-accent-blue/25 hover:shadow-accent-blue/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+          className="px-4 py-2 bg-gradient-to-br from-accent-blue to-accent-blue text-on-accent rounded-md text-xs font-semibold shadow-lg shadow-accent-blue/10 hover:shadow-accent-blue/40 hover:-translate-y-0.5 transition-all disabled:opacity-50"
         >
           Save
         </button>
@@ -81,7 +81,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
       <button
         onClick={handleSave}
-        className="mx-auto px-4 py-2 text-xs text-text-muted hover:text-text-secondary hover:bg-white/[0.03] rounded-md transition-all flex items-center gap-1"
+        className="mx-auto px-4 py-2 text-xs text-text-muted hover:text-text-secondary hover:bg-ui-overlay/[0.03] rounded-md transition-all flex items-center gap-1"
       >
         Skip for now <ArrowRight className="w-3 h-3" />
       </button>
