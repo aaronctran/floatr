@@ -1,13 +1,11 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import { Check, Pause, Pencil, Play, Trash2 } from 'lucide-react';
-import { isIgnoredWatchItem, normalizeWatchlist, replaceWatchlistLine, suggestWatchSkins, toggleIgnoredWatchLine } from '../../services/watchlist';
+import { isIgnoredWatchItem, normalizeWatchlist, toggleIgnoredWatchLine } from '../../services/watchlist';
+
+import WatchlistBrowser from './WatchlistBrowser';
 
 export default function WatchlistInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const input = useRef<HTMLTextAreaElement>(null);
   const id = useId();
-  const [caret, setCaret] = useState(value.length);
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(0);
   const [editing, setEditing] = useState<{ index: number; original: string; draft: string } | null>(null);
   const [editError, setEditError] = useState('');
   const actionClass = 'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-card';
@@ -29,73 +27,9 @@ export default function WatchlistInput({ value, onChange }: { value: string; onC
     setEditing(null);
     setEditError('');
   };
-  const lineStart = caret === 0 ? 0 : value.lastIndexOf('\n', caret - 1) + 1;
-  const lineEnd = value.indexOf('\n', caret);
-  const suggestions = open ? suggestWatchSkins(value.slice(lineStart, lineEnd < 0 ? value.length : lineEnd)) : [];
-  const active = Math.min(selected, Math.max(0, suggestions.length - 1));
-
-  const choose = (suggestion: string) => {
-    const next = replaceWatchlistLine(value, caret, suggestion);
-    onChange(next.text);
-    setCaret(next.caret);
-    setOpen(false);
-    requestAnimationFrame(() => {
-      input.current?.focus();
-      input.current?.setSelectionRange(next.caret, next.caret);
-      setOpen(false);
-    });
-  };
-
   return (
     <div>
-      <textarea
-        ref={input}
-        value={value}
-        aria-label="Watchlist skins, one per line"
-        role="combobox"
-        aria-autocomplete="list"
-        aria-haspopup="listbox"
-        aria-expanded={suggestions.length > 0}
-        aria-controls={`${id}-suggestions`}
-        aria-activedescendant={suggestions.length ? `${id}-${active}` : undefined}
-        onChange={(event) => {
-          setEditing(null);
-          setEditError('');
-          onChange(event.target.value);
-          setCaret(event.target.selectionStart);
-          setSelected(0);
-          setOpen(true);
-        }}
-        onClick={(event) => { setCaret(event.currentTarget.selectionStart); setSelected(0); setOpen(true); }}
-        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') { setOpen(false); return; }
-          if (!suggestions.length) return;
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            setSelected((active + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length);
-          } else if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            choose(suggestions[active]);
-          }
-        }}
-        placeholder={'M4A4 | Poseidon (Factory New)\nAK-47 | Redline (Field-Tested)'}
-        className="w-full min-h-[72px] px-2.5 py-2 bg-bg-card border border-ui-border/[0.06] rounded-md text-text-primary text-xs placeholder:text-text-muted focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all resize-y"
-      />
-      {suggestions.length > 0 && (
-        <ul id={`${id}-suggestions`} role="listbox" aria-label="Matching skins" className="mt-1 max-h-44 overflow-y-auto rounded-md border border-ui-border/10 bg-bg-card">
-          {suggestions.map((suggestion, index) => (
-            <li key={suggestion} id={`${id}-${index}`} role="option" aria-selected={index === active}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => choose(suggestion)}
-              className={`px-2.5 py-2 text-xs cursor-pointer ${index === active ? 'bg-accent-blue text-on-accent' : 'text-text-secondary hover:bg-ui-overlay/10'}`}>
-              {suggestion}
-            </li>
-          ))}
-        </ul>
-      )}
+      <WatchlistBrowser value={value} onChange={onChange} />
       {value.trim() && (
         <fieldset className="mt-3 space-y-1">
           <legend className="text-xs font-semibold text-text-secondary mb-1">Skins included in scans</legend>
