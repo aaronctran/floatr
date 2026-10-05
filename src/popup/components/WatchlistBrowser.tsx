@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { Check, Plus, Search } from 'lucide-react';
+import { Check, Gauge, Plus, Search } from 'lucide-react';
 import { SKIN_CATALOG } from '../../constants/skins';
 import { normalizeWatchItem, suggestWatchSkins } from '../../services/watchlist';
 
@@ -21,15 +21,17 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
   const [category, setCategory] = useState('All');
   const [weapon, setWeapon] = useState('');
   const [query, setQuery] = useState('');
+  const [stattrak, setStattrak] = useState(false);
   const [selected, setSelected] = useState(0);
   const [message, setMessage] = useState('');
   const availableWeapons = weapons.filter(([, index]) => inCategory(index, category));
   const suggestions = useMemo(() => {
     if (!query.trim() && !weapon) return [];
-    const names = suggestWatchSkins(`${weapon} ${query}`.trim(), SKIN_CATALOG.length);
-    const eligible = new Set(SKIN_CATALOG.filter(skin => inCategory(skin.defIndex, category) && (!weapon || skin.weapon === weapon)).map(skin => skin.name));
+    const search = query.replace(/^(?:★\s*)?(?:st|stattrak|statrak)™?[.\s]+/i, '');
+    const names = suggestWatchSkins(`${stattrak ? 'st ' : ''}${weapon} ${search}`.trim(), SKIN_CATALOG.length);
+    const eligible = new Set(SKIN_CATALOG.filter(skin => inCategory(skin.defIndex, category) && (!weapon || skin.weapon === weapon) && (!stattrak || skin.stattrak)).map(skin => skin.name));
     return names.filter(name => eligible.has(name.replace(/StatTrak™ |Souvenir /g, '').replace(/ \([^)]*\)$/, ''))).slice(0, 8);
-  }, [query, weapon, category]);
+  }, [query, weapon, category, stattrak]);
   const watched = new Set(value.split('\n').filter(line => line.trim()).map(line => normalizeWatchItem(line.replace(/^\s*!\s*/, '')).normalized.toLowerCase()));
   const active = Math.min(selected, Math.max(0, suggestions.length - 1));
   const add = (name: string) => {
@@ -38,6 +40,17 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
     setMessage(`Added ${name}`);
   };
   return <div>
+    <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-ui-border/10 bg-bg-card p-1.5">
+      <span className="pl-1.5 text-[11px] font-medium text-text-muted">Variant</span>
+      <div role="group" aria-label="Skin variant" className="flex gap-1 rounded-md bg-bg-primary p-1">
+        {[false, true].map(isStattrak => <button key={String(isStattrak)} type="button" aria-pressed={stattrak === isStattrak}
+          onClick={() => { setStattrak(isStattrak); setSelected(0); setMessage(''); }}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${stattrak === isStattrak ? 'border-accent-blue bg-accent-blue text-on-accent shadow-sm' : 'border-transparent text-text-muted hover:bg-ui-overlay/5 hover:text-text-primary'}`}>
+          {isStattrak && <Gauge className="h-3.5 w-3.5" aria-hidden="true" />}
+          {isStattrak ? 'StatTrak™' : 'Standard'}
+        </button>)}
+      </div>
+    </div>
     <div className="flex w-full items-center gap-1 rounded-lg border border-accent-blue/40 bg-bg-card p-1.5 focus-within:ring-2 focus-within:ring-accent-blue/20">
       <select aria-label="Weapon category" value={category}
         onChange={event => { setCategory(event.target.value); setWeapon(''); setQuery(''); setSelected(0); setMessage(''); }}
@@ -66,7 +79,10 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
     <ul id={`${id}-results`} role="listbox" aria-label="Matching skins" className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-ui-border/10 bg-bg-card empty:hidden">
       {suggestions.map((name, index) => <li key={name} id={`${id}-${index}`} role="option" aria-selected={index === active}
         className={`flex items-center gap-2 border-b border-ui-border/10 px-3 py-2 last:border-0 ${index === active ? 'bg-accent-blue/10' : ''}`}>
-        <span className="min-w-0 flex-1 text-xs text-text-primary">{name}</span>
+        <span className="min-w-0 flex-1 text-xs text-text-primary">
+          {stattrak && <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-accent-blue"><Gauge className="h-3 w-3" aria-hidden="true" />StatTrak™</span>}
+          {stattrak ? name.replace(/StatTrak™ /, '') : name}
+        </span>
         <button type="button" onClick={() => add(name)} disabled={watched.has(name.toLowerCase())} aria-label={`Add ${name} to watchlist`}
           className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-blue px-2 py-1.5 text-[11px] font-medium text-on-accent hover:opacity-90 disabled:bg-ui-overlay/5 disabled:text-text-muted focus-visible:ring-2 focus-visible:ring-accent-blue">
           {watched.has(name.toLowerCase()) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
@@ -74,7 +90,7 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
         </button>
       </li>)}
     </ul>
-    {query.trim() && !suggestions.length && <p className="mt-2 text-[11px] text-text-muted">No matching skins. Try another finish or choose All.</p>}
+    {(query.trim() || weapon) && !suggestions.length && <p className="mt-2 text-[11px] text-text-muted">{stattrak ? 'No StatTrak matches. Try another skin or switch to Standard.' : 'No matching skins. Try another finish or choose All.'}</p>}
     {message && <p className="mt-2 text-[11px] text-accent-green" aria-live="polite">{message}</p>}
   </div>;
 }
