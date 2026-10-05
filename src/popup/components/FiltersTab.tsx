@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Save, Play, Pause } from 'lucide-react';
+import { Check, Save, Play, Pause } from 'lucide-react';
 import type { Settings, SensitivityLevel } from '../../types';
 import { getSettings, setSettings } from '../../services/storage';
 import { normalizeWatchlist } from '../../services/watchlist';
@@ -22,6 +22,12 @@ export default function FiltersTab() {
   const [watchlistDraft, setWatchlistDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (statusMessage !== 'Settings saved!') return;
+    const timer = setTimeout(() => setStatusMessage(null), 2500);
+    return () => clearTimeout(timer);
+  }, [statusMessage]);
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -52,12 +58,14 @@ export default function FiltersTab() {
   };
 
   const updateField = useCallback((field: keyof Settings, value: any) => {
+    setStatusMessage(null);
     setLocalSettings((prev) => (prev ? { ...prev, [field]: value } : null));
   }, []);
 
   const handleSave = async () => {
     if (!settings) return;
     setSaving(true);
+    setStatusMessage(null);
     const sens = SENSITIVITY_MAP[settings.sensitivity || 'balanced'];
     const { enabled: _enabled, apiKey: _apiKey, ...editableSettings } = settings;
     const newSettings: Partial<Settings> = {
@@ -72,7 +80,6 @@ export default function FiltersTab() {
     try {
       await setSettings(newSettings);
       setStatusMessage('Settings saved!');
-      setTimeout(() => setStatusMessage(null), 2000);
     } catch (err: any) {
       setStatusMessage(`Error: ${err.message}`);
     } finally {
@@ -227,20 +234,20 @@ export default function FiltersTab() {
       {/* Actions */}
       <div className="space-y-2 pt-2">
         <p className="text-[11px] text-text-muted">Save polling, float, and sensitivity settings.</p>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full py-2.5 bg-gradient-to-r from-accent-blue to-accent-blue text-on-accent rounded-md text-sm font-bold shadow-lg shadow-accent-blue/10 hover:shadow-accent-blue/40 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? 'Saving…' : 'Save Filters'}
-        </button>
-
-        {statusMessage && (
-          <div className={`text-xs text-center py-1.5 rounded-md ${statusMessage.startsWith('Error') ? 'text-accent-red bg-accent-red/10' : 'text-accent-green bg-accent-green/10'}`}>
+        {statusMessage && statusMessage !== 'Settings saved!' && (
+          <div role="alert" className="rounded-md bg-accent-red/10 px-3 py-2 text-xs text-accent-red">
             {statusMessage}
           </div>
         )}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={`w-full py-2.5 rounded-md text-sm font-bold border transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${statusMessage === 'Settings saved!' && !saving ? 'bg-accent-green/10 border-accent-green/30 text-accent-green' : 'bg-accent-blue border-accent-blue text-on-accent hover:opacity-90'}`}
+        >
+          {statusMessage === 'Settings saved!' && !saving ? <Check className="w-4 h-4" aria-hidden="true" /> : <Save className="w-4 h-4" aria-hidden="true" />}
+          {saving ? 'Saving…' : statusMessage === 'Settings saved!' ? 'Filters saved' : 'Save Filters'}
+        </button>
+        <span role="status" className="sr-only">{statusMessage === 'Settings saved!' ? statusMessage : ''}</span>
       </div>
     </div>
   );
