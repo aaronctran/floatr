@@ -45,7 +45,12 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
       <div role="group" aria-label="Skin variant" className="flex gap-1 rounded-md bg-bg-primary p-1">
         {[false, true].map(isStattrak => <button key={String(isStattrak)} type="button" aria-pressed={stattrak === isStattrak}
           onClick={() => { setStattrak(isStattrak); setSelected(0); setMessage(''); }}
-          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${stattrak === isStattrak ? 'border-accent-blue bg-accent-blue text-on-accent shadow-sm' : 'border-transparent text-text-muted hover:bg-ui-overlay/5 hover:text-text-primary'}`}>
+          style={isStattrak ? {
+            backgroundColor: stattrak ? '#e98b36' : 'light-dark(#fff1e5, #2d2116)',
+            borderColor: stattrak ? '#e98b36' : 'light-dark(#e8c4a3, #694322)',
+            color: stattrak ? '#261406' : 'light-dark(#995014, #efaa63)',
+          } : undefined}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${isStattrak ? 'focus-visible:ring-[#e98b36] hover:opacity-90' : 'focus-visible:ring-accent-blue'} ${stattrak === isStattrak ? 'border-accent-blue bg-accent-blue text-on-accent shadow-sm' : 'border-transparent text-text-muted hover:bg-ui-overlay/5 hover:text-text-primary'}`}>
           {isStattrak && <Gauge className="h-3.5 w-3.5" aria-hidden="true" />}
           {isStattrak ? 'StatTrak™' : 'Standard'}
         </button>)}
@@ -80,10 +85,11 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
       {suggestions.map((name, index) => <li key={name} id={`${id}-${index}`} role="option" aria-selected={index === active}
         className={`flex items-center gap-2 border-b border-ui-border/10 px-3 py-2 last:border-0 ${index === active ? 'bg-accent-blue/10' : ''}`}>
         <span className="min-w-0 flex-1 text-xs text-text-primary">
-          {stattrak && <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-accent-blue"><Gauge className="h-3 w-3" aria-hidden="true" />StatTrak™</span>}
+          {stattrak && <span style={{ color: 'light-dark(#995014, #efaa63)' }} className="mb-1 flex items-center gap-1 text-[10px] font-semibold"><Gauge className="h-3 w-3" aria-hidden="true" />StatTrak™</span>}
           {stattrak ? name.replace(/StatTrak™ /, '') : name}
         </span>
         <button type="button" onClick={() => add(name)} disabled={watched.has(name.toLowerCase())} aria-label={`Add ${name} to watchlist`}
+          style={stattrak && !watched.has(name.toLowerCase()) ? { backgroundColor: '#e98b36', color: '#261406' } : undefined}
           className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-blue px-2 py-1.5 text-[11px] font-medium text-on-accent hover:opacity-90 disabled:bg-ui-overlay/5 disabled:text-text-muted focus-visible:ring-2 focus-visible:ring-accent-blue">
           {watched.has(name.toLowerCase()) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
           {watched.has(name.toLowerCase()) ? 'Watching' : 'Add'}
