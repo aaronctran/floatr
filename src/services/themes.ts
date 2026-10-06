@@ -9,11 +9,25 @@ export const THEMES = [
   { id: 'porcelain', name: 'Warm Porcelain', bg: '#f5f2ec', card: '#ffffff', accent: '#9c4323', ink: '#ffffff', text: '#29251f', muted: '#6e6459', light: true },
 ];
 
+const FLOAT_BANNERS: Record<string, { background: string; foreground: string }> = {
+  original: { background: '#2563eb', foreground: '#ffffff' },
+  silver: { background: '#a1a1aa', foreground: '#10151b' },
+  slate: { background: '#7c9bb7', foreground: '#10151b' },
+  stone: { background: '#b69b7c', foreground: '#10151b' },
+  mint: { background: '#34d399', foreground: '#10151b' },
+  violet: { background: '#8b5cf6', foreground: '#000000' },
+  ocean: { background: '#22d3ee', foreground: '#10151b' },
+  porcelain: { background: '#9c4323', foreground: '#ffffff' },
+};
+
 export function applyTheme(id: unknown) {
   const theme = THEMES.find((entry) => entry.id === id) ?? THEMES[0];
+  const floatBanner = FLOAT_BANNERS[theme.id];
   const colors = { 'bg-primary': theme.bg, 'bg-secondary': theme.card, 'bg-card': theme.card,
     'text-primary': theme.text, 'text-secondary': theme.muted, 'text-muted': theme.muted,
     'accent-blue': theme.accent, 'accent-blue-hover': theme.accent, 'on-accent': theme.ink,
+    'logo-text': theme.id === 'porcelain' ? theme.accent : '#ffffff',
+    'float-banner': floatBanner.background, 'float-banner-foreground': floatBanner.foreground,
     'ui-border': theme.light ? '#29251f' : '#ffffff', 'ui-overlay': theme.light ? '#29251f' : '#ffffff',
     'accent-green': theme.light ? '#15803d' : '#22c55e', 'accent-red': theme.light ? '#b91c1c' : '#ef4444',
     'accent-amber': theme.light ? '#92400e' : '#f59e0b' };

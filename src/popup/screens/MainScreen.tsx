@@ -8,7 +8,7 @@ export default function MainScreen({ fullPage = false, initialTab = 'deals' }: {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   return (
     <div className={`${fullPage ? 'w-full max-w-xl mx-auto min-h-screen' : 'w-[420px] min-h-[540px] max-h-[600px]'} bg-bg-primary flex flex-col overflow-hidden`}>
-      <header className="px-4 py-3 bg-bg-secondary"><h1 className="text-base font-bold text-accent-blue tracking-tight">Floatr</h1></header>
+      <header className="px-4 py-3 bg-bg-secondary"><h1 className="text-base font-bold tracking-tight" style={{ color: 'rgb(var(--logo-text, 255 255 255))' }}>float<span className="text-accent-blue">r</span></h1></header>
       <nav aria-label="Main navigation" className="flex px-4 gap-1 bg-bg-secondary">
         {(['deals', 'filters', 'settings'] as const).map((tab) => <button key={tab} type="button" aria-current={activeTab === tab ? 'page' : undefined}
           aria-controls={`panel-${tab}`} onClick={() => setActiveTab(tab)}
