@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { Check, Gauge, Plus, Search, Trophy } from 'lucide-react';
+import { Check, Plus, Search } from 'lucide-react';
 import { SKIN_CATALOG } from '../../constants/skins';
 import { normalizeWatchItem, suggestWatchSkins } from '../../services/watchlist';
 
@@ -54,8 +54,6 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
             color: variant === option ? '#261406' : option === 'souvenir' ? 'light-dark(#795b0d, #e3bb53)' : 'light-dark(#995014, #efaa63)',
           } : undefined}
           className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-md border px-1.5 py-2 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${option === 'souvenir' ? 'focus-visible:ring-[#e3bb53] hover:opacity-90' : option === 'stattrak' ? 'focus-visible:ring-[#e98b36] hover:opacity-90' : 'focus-visible:ring-accent-blue'} ${variant === option ? 'border-accent-blue bg-accent-blue text-on-accent shadow-sm' : 'border-transparent text-text-muted hover:bg-ui-overlay/5 hover:text-text-primary'}`}>
-          {option === 'stattrak' && <Gauge className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          {option === 'souvenir' && <Trophy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           {option === 'stattrak' ? 'StatTrak™' : option === 'souvenir' ? 'Souvenir' : 'Standard'}
         </button>)}
       </div>
@@ -89,7 +87,7 @@ export default function WatchlistBrowser({ value, onChange }: { value: string; o
       {suggestions.map((name, index) => <li key={name} id={`${id}-${index}`} role="option" aria-selected={index === active}
         className={`flex items-center gap-2 border-b border-ui-border/10 px-3 py-2 last:border-0 ${index === active ? 'bg-accent-blue/10' : ''}`}>
         <span className="min-w-0 flex-1 text-xs text-text-primary">
-          {variant !== 'standard' && <span style={{ color: variantInk }} className="mb-1 flex items-center gap-1 text-[10px] font-semibold">{souvenir ? <Trophy className="h-3 w-3" aria-hidden="true" /> : <Gauge className="h-3 w-3" aria-hidden="true" />}{souvenir ? 'Souvenir' : 'StatTrak™'}</span>}
+          {variant !== 'standard' && <span style={{ color: variantInk }} className="mb-1 block text-[10px] font-semibold">{souvenir ? 'Souvenir' : 'StatTrak™'}</span>}
           {name.replace(/StatTrak™ |Souvenir /, '')}
         </span>
         <button type="button" onClick={() => add(name)} disabled={watched.has(name.toLowerCase())} aria-label={`Add ${name} to watchlist`}
